@@ -1,0 +1,17 @@
+{
+    "name": "SpaceSim.Debug",
+    "rootNamespace": "SpaceSim.Debug",
+    "references": [
+        "SpaceSim.Shared",
+        "SpaceSim.Simulation"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

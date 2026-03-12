@@ -1,0 +1,69 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <Style src="/Assets/UI/USS/OrbitalSandboxScreen.uss" />
+    <ui:VisualElement name="root" class="root-container">
+        <!-- Left panel: object list -->
+        <ui:VisualElement name="left-panel" class="side-panel left-panel">
+            <ui:Label name="object-list-title" class="panel-title" />
+            <ui:ListView name="object-list-view" class="object-list" />
+        </ui:VisualElement>
+
+        <!-- Center: 3D viewport + time controls overlay -->
+        <ui:VisualElement name="center-viewport" class="center-viewport" picking-mode="Ignore">
+            <!-- Time controls anchored to bottom center -->
+            <ui:VisualElement name="time-controls" class="time-controls" picking-mode="Position">
+                <ui:Button name="time-btn-pause" class="time-btn" />
+                <ui:VisualElement class="time-separator" />
+                <ui:Button name="time-btn-x1" class="time-btn" />
+                <ui:Button name="time-btn-x10" class="time-btn" />
+                <ui:Button name="time-btn-x100" class="time-btn" />
+                <ui:VisualElement class="time-separator" />
+                <ui:Label name="time-status" class="time-status" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Right panel: details -->
+        <ui:VisualElement name="right-panel" class="side-panel right-panel">
+            <ui:Label name="details-title" class="panel-title" />
+
+            <ui:Label name="details-no-selection" class="no-selection-text" />
+
+            <ui:VisualElement name="details-content" class="details-content">
+                <ui:VisualElement class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-name-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-name-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-type-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-type-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-radius-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-radius-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-parent-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-parent-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

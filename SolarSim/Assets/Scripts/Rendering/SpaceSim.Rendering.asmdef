@@ -1,0 +1,21 @@
+{
+    "name": "SpaceSim.Rendering",
+    "rootNamespace": "SpaceSim.Rendering",
+    "references": [
+        "SpaceSim.Shared",
+        "SpaceSim.World",
+        "SpaceSim.Simulation",
+        "SpaceSim.Debug",
+        "SpaceSim.UI",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
