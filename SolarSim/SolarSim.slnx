@@ -4,8 +4,8 @@
   <Project Path="ParallelCascades.ProceduralShaders.Editor.csproj" />
   <Project Path="SpaceSim.UI.csproj" />
   <Project Path="ParallelCascades.ProceduralPlanetGenerationCommon.Runtime.csproj" />
-  <Project Path="SpaceSim.World.csproj" />
   <Project Path="SpaceSim.Data.csproj" />
+  <Project Path="SpaceSim.World.csproj" />
   <Project Path="ParallelCascades.ProceduralShaders.Runtime.csproj" />
   <Project Path="ParallelCascades.ProceduralPlanetGenerationLite.Runtime.csproj" />
   <Project Path="SpaceSim.Rendering.csproj" />

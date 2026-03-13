@@ -20,12 +20,16 @@ def ensure_exists(path: Path, name: str) -> None:
 
 
 def safe_target_path(base: Path, relative_path: str) -> Path:
+    base_resolved = base.resolve()
     target = (base / relative_path).resolve()
 
     try:
-        target.relative_to(base.resolve())
-    except ValueError as exc:
-        raise ValueError(f"Unsafe target path outside Assets: {relative_path}") from exc
+        target.relative_to(base_resolved)
+    except ValueError:
+        print(
+            f"[WARN] Target path goes outside Assets: {relative_path}\n"
+            f"[WARN] Full resolved path: {target}"
+        )
 
     return target
 

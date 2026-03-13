@@ -63,6 +63,46 @@
                         <ui:Label name="details-parent-value" class="details-value" />
                     </ui:VisualElement>
                 </ui:VisualElement>
+
+                <!-- Ship-specific: Role -->
+                <ui:VisualElement name="details-role-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-role-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-role-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Ship-specific: Class -->
+                <ui:VisualElement name="details-class-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-class-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-class-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Ship-specific: State -->
+                <ui:VisualElement name="details-state-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-state-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-state-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Ship-specific: Destination (visible only when travelling) -->
+                <ui:VisualElement name="details-dest-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-dest-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-dest-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

@@ -89,6 +89,53 @@ namespace SpaceSim.Data.Editor
                 RotationPeriod = 20.0
             });
 
+            // --- Ships ---
+
+            // Player ship orbiting Terra.
+            asset.Ships.Add(new ShipDefinition
+            {
+                Key = "ship_aurora",
+                DisplayName = "\u041a\u043e\u0440\u0432\u0435\u0442 \u00ab\u0410\u0432\u0440\u043e\u0440\u0430\u00bb",
+                LocalizationKey = "ship.aurora",
+                Role = ShipRole.Player,
+                ShipClass = "Corvette",
+                ParentBodyKey = "terra",
+                Radius = 0.15,
+                OrbitalRadius = 3.5,
+                OrbitalPeriod = 12.0,
+                StartAngleDeg = 0.0
+            });
+
+            // NPC trader orbiting Terra.
+            asset.Ships.Add(new ShipDefinition
+            {
+                Key = "ship_cargo7",
+                DisplayName = "\u0422\u0440\u0430\u043d\u0441\u043f\u043e\u0440\u0442 \u00ab\u041a\u0430\u0440\u0433\u043e-7\u00bb",
+                LocalizationKey = "ship.cargo7",
+                Role = ShipRole.Trader,
+                ShipClass = "Freighter",
+                ParentBodyKey = "terra",
+                Radius = 0.12,
+                OrbitalRadius = 4.0,
+                OrbitalPeriod = 15.0,
+                StartAngleDeg = 120.0
+            });
+
+            // NPC patrol orbiting Ares.
+            asset.Ships.Add(new ShipDefinition
+            {
+                Key = "ship_strazh3",
+                DisplayName = "\u041f\u0430\u0442\u0440\u0443\u043b\u044c \u00ab\u0421\u0442\u0440\u0430\u0436-3\u00bb",
+                LocalizationKey = "ship.strazh3",
+                Role = ShipRole.Patrol,
+                ShipClass = "Interceptor",
+                ParentBodyKey = "ares",
+                Radius = 0.12,
+                OrbitalRadius = 3.0,
+                OrbitalPeriod = 10.0,
+                StartAngleDeg = 200.0
+            });
+
             // Save asset.
             string path = "Assets/Data/Config/SampleStarSystem.asset";
             string dir = System.IO.Path.GetDirectoryName(path);

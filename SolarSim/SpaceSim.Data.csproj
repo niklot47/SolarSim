@@ -49,6 +49,7 @@
     <Analyzer Include="C:\MyPrograms\Unity\Hub\Editor\6000.3.10f1\Editor\Data\Tools\BuildPipeline\Unity.SourceGenerators\Unity.UIToolkit.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\Scripts\Data\Definitions\ShipDefinition.cs" />
     <Compile Include="Assets\Scripts\Data\Config\SceneScaleConfig.cs" />
     <Compile Include="Assets\Scripts\Data\Editor\SampleSystemAssetCreator.cs" />
     <Compile Include="Assets\Scripts\Data\Definitions\StarSystemDefinition.cs" />

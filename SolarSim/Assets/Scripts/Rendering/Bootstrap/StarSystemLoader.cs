@@ -64,6 +64,27 @@ namespace SpaceSim.Rendering.Bootstrap
                 });
             }
 
+            // Convert ship definitions.
+            if (def.Ships != null)
+            {
+                foreach (var shipDef in def.Ships)
+                {
+                    data.Ships.Add(new ShipBuildData
+                    {
+                        Key = shipDef.Key,
+                        DisplayName = shipDef.DisplayName,
+                        LocalizationKey = shipDef.LocalizationKey,
+                        Role = (int)shipDef.Role,
+                        ShipClass = shipDef.ShipClass,
+                        ParentBodyKey = shipDef.ParentBodyKey,
+                        Radius = shipDef.Radius,
+                        OrbitalRadius = shipDef.OrbitalRadius,
+                        OrbitalPeriod = shipDef.OrbitalPeriod,
+                        StartAngleDeg = shipDef.StartAngleDeg
+                    });
+                }
+            }
+
             return data;
         }
     }

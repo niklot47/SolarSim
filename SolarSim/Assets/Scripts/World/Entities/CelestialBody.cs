@@ -8,6 +8,7 @@ namespace SpaceSim.World.Entities
     /// Main world entity representing a celestial body or orbital object.
     /// Extends WorldEntity with orbital/physical properties.
     /// Parent-child hierarchy is stored as ids for loose coupling.
+    /// Ships use BodyType.Ship and attach ShipInfo for role/class data.
     /// </summary>
     public class CelestialBody : WorldEntity
     {
@@ -41,6 +42,12 @@ namespace SpaceSim.World.Entities
         /// <summary>Localization key for the display name (future localization).</summary>
         public string LocalizationKeyName { get; set; }
 
+        /// <summary>
+        /// Ship-specific data. Non-null only when BodyType == Ship.
+        /// Contains role, ship key, and ship class information.
+        /// </summary>
+        public ShipInfo ShipInfo { get; set; }
+
         public CelestialBody(EntityId id, string displayName, CelestialBodyType bodyType)
             : base(id, displayName)
         {
@@ -53,6 +60,7 @@ namespace SpaceSim.World.Entities
             IsSelectable = true;
             HasSurface = false;
             LocalizationKeyName = "";
+            ShipInfo = null;
         }
 
         public CelestialBody(string displayName, CelestialBodyType bodyType)
@@ -81,7 +89,8 @@ namespace SpaceSim.World.Entities
         public override string ToString()
         {
             string parent = ParentId.IsValid ? $" parent={ParentId}" : " ROOT";
-            return $"{BodyType}[{Id}] \"{DisplayName}\"{parent} r={Radius:F2} children={ChildIds.Count}";
+            string shipStr = ShipInfo != null ? $" {ShipInfo}" : "";
+            return $"{BodyType}[{Id}] \"{DisplayName}\"{parent} r={Radius:F2} children={ChildIds.Count}{shipStr}";
         }
     }
 }

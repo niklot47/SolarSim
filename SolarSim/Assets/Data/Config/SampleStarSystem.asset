@@ -100,24 +100,24 @@ MonoBehaviour:
     AxialTiltDeg: 0
     RotationPeriod: 20
     InitialRotationDeg: 0
-  - Key: venus
-    DisplayName: Venus
-    LocalizationKey: body.moon
-    BodyType: 2
-    ParentKey: terra
-    AttachmentMode: 1
-    Radius: 0.4
-    IsSelectable: 1
-    HasSurface: 1
-    SemiMajorAxis: 10
-    Eccentricity: 0
-    InclinationDeg: 0
-    LongitudeOfAscendingNodeDeg: 0
-    ArgumentOfPeriapsisDeg: 0
-    MeanAnomalyAtEpochDeg: 45
-    OrbitalPeriod: 30
-    EpochTime: 0
-    IsPrograde: 1
-    AxialTiltDeg: 0
-    RotationPeriod: 20
-    InitialRotationDeg: 0
+  Ships:
+  - Key: ship_aurora
+    DisplayName: "\u041A\u043E\u0440\u0432\u0435\u0442 \xAB\u0410\u0432\u0440\u043E\u0440\u0430\xBB"
+    LocalizationKey: ship.aurora
+    Role: 0
+    ShipClass: Corvette
+    ParentBodyKey: terra
+    Radius: 0.15
+    OrbitalRadius: 3.5
+    OrbitalPeriod: 12
+    StartAngleDeg: 0
+  - Key: ship_cargo7
+    DisplayName: "\u0422\u0440\u0430\u043D\u0441\u043F\u043E\u0440\u0442 \xAB\u041A\u0430\u0440\u0433\u043E-7\xBB"
+    LocalizationKey: ship.cargo7
+    Role: 1
+    ShipClass: Freighter
+    ParentBodyKey: terra
+    Radius: 0.12
+    OrbitalRadius: 4
+    OrbitalPeriod: 15
+    StartAngleDeg: 120

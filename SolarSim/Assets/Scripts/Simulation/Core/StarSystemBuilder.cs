@@ -40,6 +40,23 @@ namespace SpaceSim.Simulation.Core
     }
 
     /// <summary>
+    /// Input data for building one ship. Pure C#.
+    /// </summary>
+    public class ShipBuildData
+    {
+        public string Key;
+        public string DisplayName;
+        public string LocalizationKey;
+        public int Role;           // Cast from ShipRole enum.
+        public string ShipClass;
+        public string ParentBodyKey;
+        public double Radius;
+        public double OrbitalRadius;
+        public double OrbitalPeriod;
+        public double StartAngleDeg;
+    }
+
+    /// <summary>
     /// Input data for building a star system. Pure C#.
     /// </summary>
     public class StarSystemBuildData
@@ -48,12 +65,14 @@ namespace SpaceSim.Simulation.Core
         public string DisplayName;
         public string LocalizationKey;
         public List<CelestialBodyBuildData> Bodies = new List<CelestialBodyBuildData>();
+        public List<ShipBuildData> Ships = new List<ShipBuildData>();
     }
 
     /// <summary>
     /// Builds runtime StarSystem + CelestialBody entities from build data.
     /// Pure C# — no UnityEngine dependency.
     /// Resolves parent-child hierarchy by Key/ParentKey matching.
+    /// Also builds ships and attaches them to parent bodies.
     /// </summary>
     public static class StarSystemBuilder
     {
@@ -126,7 +145,7 @@ namespace SpaceSim.Simulation.Core
                     parent.AddChildId(child.Id);
             }
 
-            // Phase 3: register all in registry and system.
+            // Phase 3: register all bodies in registry and system.
             foreach (var bd in data.Bodies)
             {
                 if (!keyToBody.TryGetValue(bd.Key, out var body))
@@ -138,7 +157,58 @@ namespace SpaceSim.Simulation.Core
                 system.AddBody(body.Id, isRoot);
             }
 
+            // Phase 4: build ships.
+            if (data.Ships != null)
+            {
+                foreach (var sd in data.Ships)
+                {
+                    BuildShip(sd, keyToId, registry, system);
+                }
+            }
+
             return system;
+        }
+
+        private static void BuildShip(
+            ShipBuildData sd,
+            Dictionary<string, EntityId> keyToId,
+            WorldRegistry registry,
+            StarSystem system)
+        {
+            // Resolve parent body.
+            EntityId parentId = EntityId.None;
+            if (!string.IsNullOrEmpty(sd.ParentBodyKey) && keyToId.TryGetValue(sd.ParentBodyKey, out var pid))
+            {
+                parentId = pid;
+            }
+
+            var ship = new CelestialBody(sd.DisplayName, CelestialBodyType.Ship)
+            {
+                Radius = sd.Radius,
+                IsSelectable = true,
+                HasSurface = false,
+                LocalizationKeyName = sd.LocalizationKey ?? "",
+                ParentId = parentId,
+                AttachmentMode = parentId.IsValid ? AttachmentMode.Orbit : AttachmentMode.None,
+                Orbit = parentId.IsValid
+                    ? OrbitDefinition.Circular(sd.OrbitalRadius, sd.OrbitalPeriod, sd.StartAngleDeg)
+                    : null,
+                Spin = new SpinDefinition(),
+                ShipInfo = new ShipInfo(
+                    (ShipRole)sd.Role,
+                    sd.Key,
+                    sd.ShipClass ?? "")
+            };
+
+            // Wire parent-child.
+            if (parentId.IsValid)
+            {
+                var parentBody = registry.GetCelestialBody(parentId);
+                parentBody?.AddChildId(ship.Id);
+            }
+
+            registry.Add(ship);
+            system.AddBody(ship.Id, isRoot: false);
         }
     }
 }

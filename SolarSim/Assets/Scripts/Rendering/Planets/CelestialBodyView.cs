@@ -19,7 +19,7 @@ namespace SpaceSim.Rendering.Planets
             BodyType = body.BodyType;
             gameObject.name = $"Body_{body.BodyType}_{body.Id}";
             ApplyScale(body.Radius, scaleConfig);
-            ApplyColor(body.BodyType);
+            ApplyColor(body.BodyType, body.ShipInfo);
         }
 
         public void SetWorldPosition(Vector3 scenePosition)
@@ -50,22 +50,46 @@ namespace SpaceSim.Rendering.Planets
             transform.localScale = new Vector3(diameter, diameter, diameter);
         }
 
-        private void ApplyColor(CelestialBodyType bodyType)
+        private void ApplyColor(CelestialBodyType bodyType, ShipInfo shipInfo)
         {
             _meshRenderer = GetComponentInChildren<MeshRenderer>();
             if (_meshRenderer == null) return;
-            Color color = bodyType switch
+
+            Color color;
+
+            if (bodyType == CelestialBodyType.Ship && shipInfo != null)
             {
-                CelestialBodyType.Star => new Color(1f, 0.9f, 0.3f),
-                CelestialBodyType.Planet => new Color(0.3f, 0.5f, 0.8f),
-                CelestialBodyType.Moon => new Color(0.7f, 0.7f, 0.7f),
-                CelestialBodyType.Asteroid => new Color(0.5f, 0.4f, 0.3f),
-                CelestialBodyType.Station => new Color(0.8f, 0.8f, 0.9f),
-                _ => Color.white
-            };
+                // Different colors per ship role for easy identification.
+                color = shipInfo.Role switch
+                {
+                    ShipRole.Player => new Color(0.2f, 1.0f, 0.4f),    // Bright green.
+                    ShipRole.Trader => new Color(0.9f, 0.7f, 0.2f),    // Gold/yellow.
+                    ShipRole.Patrol => new Color(0.9f, 0.3f, 0.3f),    // Red.
+                    ShipRole.Civilian => new Color(0.7f, 0.7f, 0.8f),  // Light grey.
+                    _ => new Color(0.6f, 0.8f, 0.9f)
+                };
+            }
+            else
+            {
+                color = bodyType switch
+                {
+                    CelestialBodyType.Star => new Color(1f, 0.9f, 0.3f),
+                    CelestialBodyType.Planet => new Color(0.3f, 0.5f, 0.8f),
+                    CelestialBodyType.Moon => new Color(0.7f, 0.7f, 0.7f),
+                    CelestialBodyType.Asteroid => new Color(0.5f, 0.4f, 0.3f),
+                    CelestialBodyType.Station => new Color(0.8f, 0.8f, 0.9f),
+                    CelestialBodyType.Ship => new Color(0.6f, 0.8f, 0.9f),
+                    _ => Color.white
+                };
+            }
+
             _meshRenderer.material.color = color;
+
+            // Emission for stars and player ships.
             if (bodyType == CelestialBodyType.Star)
                 _meshRenderer.material.SetColor("_EmissionColor", color * 0.5f);
+            else if (bodyType == CelestialBodyType.Ship && shipInfo?.Role == ShipRole.Player)
+                _meshRenderer.material.SetColor("_EmissionColor", color * 0.15f);
         }
     }
 }

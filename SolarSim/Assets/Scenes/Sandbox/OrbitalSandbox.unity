@@ -152,6 +152,8 @@ MonoBehaviour:
   cameraController: {fileID: 137804995}
   uiDocument: {fileID: 1837812490}
   starSystemDefinition: {fileID: 11400000, guid: 152fe9861eff72f429025f0ad47ecf5b, type: 2}
+  sampleRouteStartDelay: 2
+  sampleRouteDuration: 60
 --- !u!4 &81263134
 Transform:
   m_ObjectHideFlags: 0

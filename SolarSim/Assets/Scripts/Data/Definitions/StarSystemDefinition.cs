@@ -7,6 +7,7 @@ namespace SpaceSim.Data.Definitions
     /// ScriptableObject defining a complete star system.
     /// Create via: Create -> SpaceSim -> Star System Definition.
     /// Bodies are embedded as a flat list; parent-child resolved by Key/ParentKey.
+    /// Ships are a separate list resolved by ParentBodyKey at build time.
     /// </summary>
     [CreateAssetMenu(fileName = "NewStarSystem", menuName = "SpaceSim/Star System Definition")]
     public class StarSystemDefinition : ScriptableObject
@@ -24,5 +25,9 @@ namespace SpaceSim.Data.Definitions
         [Header("Bodies")]
         [Tooltip("All celestial bodies in this system. Order does not matter; hierarchy is resolved by Key/ParentKey.")]
         public List<CelestialBodyDefinition> Bodies = new List<CelestialBodyDefinition>();
+
+        [Header("Ships")]
+        [Tooltip("Ships present in this system. Placed by referencing a parent body key.")]
+        public List<ShipDefinition> Ships = new List<ShipDefinition>();
     }
 }

@@ -50,6 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets\Scripts\Simulation\Core\SampleStarSystemFactory.cs" />
+    <Compile Include="Assets\Scripts\Simulation\Ships\ShipMovementSystem.cs" />
     <Compile Include="Assets\Scripts\Simulation\Time\SimulationClock.cs" />
     <Compile Include="Assets\Scripts\Simulation\Orbits\OrbitalPositionCalculator.cs" />
     <Compile Include="Assets\Scripts\Simulation\Core\SelectionService.cs" />

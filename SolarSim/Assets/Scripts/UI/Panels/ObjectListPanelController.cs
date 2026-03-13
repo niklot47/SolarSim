@@ -14,6 +14,7 @@ namespace SpaceSim.UI.Panels
     /// <summary>
     /// UI Toolkit controller for the celestial body list panel.
     /// Populates a hierarchical ListView and keeps selection in sync with SelectionService.
+    /// Supports dynamic refresh when hierarchy changes (e.g. ship departure/arrival).
     /// </summary>
     public class ObjectListPanelController : MonoBehaviour
     {
@@ -91,6 +92,38 @@ namespace SpaceSim.UI.Panels
         {
             if (_selectionService != null)
                 _selectionService.OnSelectionChanged -= OnExternalSelectionChanged;
+        }
+
+        /// <summary>
+        /// Rebuild the body list from current world state.
+        /// Call this when hierarchy changes (e.g. ship re-parenting after travel).
+        /// </summary>
+        public void Refresh()
+        {
+            if (_listView == null) return;
+
+            // Remember current selection.
+            EntityId selectedId = _selectionService != null ? _selectionService.CurrentSelectionId : EntityId.None;
+
+            RefreshBodyList();
+
+            _listView.itemsSource = _bodies;
+            _listView.Rebuild();
+
+            // Restore selection highlight.
+            if (selectedId.IsValid)
+            {
+                _suppressSelectionEvent = true;
+                for (int i = 0; i < _bodies.Count; i++)
+                {
+                    if (_bodies[i].Id == selectedId)
+                    {
+                        _listView.SetSelection(i);
+                        break;
+                    }
+                }
+                _suppressSelectionEvent = false;
+            }
         }
 
         private void RefreshBodyList()
