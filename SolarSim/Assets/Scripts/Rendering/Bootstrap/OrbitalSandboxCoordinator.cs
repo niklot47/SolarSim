@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UIElements;
+using SpaceSim.Data.Definitions;
 using SpaceSim.Simulation.Core;
 using SpaceSim.Simulation.Time;
 using SpaceSim.World.Entities;
@@ -14,7 +15,8 @@ namespace SpaceSim.Rendering.Bootstrap
 {
     /// <summary>
     /// Coordinator that wires together world data, rendering, selection, and UI
-    /// for the orbital sandbox scene. Keeps GameBootstrap thin.
+    /// for the orbital sandbox scene.
+    /// Loads star system from assigned data asset, or falls back to sample factory.
     /// </summary>
     public class OrbitalSandboxCoordinator : MonoBehaviour
     {
@@ -24,6 +26,10 @@ namespace SpaceSim.Rendering.Bootstrap
 
         [Header("UI")]
         [SerializeField] private UIDocument uiDocument;
+
+        [Header("Data")]
+        [Tooltip("Assign a StarSystemDefinition asset. If empty, uses built-in sample system.")]
+        [SerializeField] private StarSystemDefinition starSystemDefinition;
 
         // Services.
         private WorldRegistry _registry;
@@ -35,12 +41,17 @@ namespace SpaceSim.Rendering.Bootstrap
         /// </summary>
         public void Setup(SimulationClock clock)
         {
-            // Create core services.
             _registry = new WorldRegistry();
             _selectionService = new SelectionService();
 
-            // Create sample star system.
-            _currentSystem = SampleStarSystemFactory.Create(_registry);
+            // Load star system: from data asset if assigned, otherwise fallback.
+            _currentSystem = LoadStarSystem();
+
+            if (_currentSystem == null)
+            {
+                UnityEngine.Debug.LogError("[OrbitalSandboxCoordinator] Failed to load any star system!");
+                return;
+            }
 
             // Initialize renderer.
             if (mapRenderer != null)
@@ -49,11 +60,11 @@ namespace SpaceSim.Rendering.Bootstrap
                 mapRenderer.BuildSceneObjects();
             }
 
-            // Selection bridge (highlight ring + camera focus).
+            // Selection bridge.
             var selectionBridge = gameObject.AddComponent<SelectionBridge>();
             selectionBridge.Initialize(_selectionService, mapRenderer, cameraController);
 
-            // Scene click handler (pass uiDocument for UI-aware picking).
+            // Scene click handler.
             var clickHandler = gameObject.AddComponent<BodyClickHandler>();
             clickHandler.Initialize(_selectionService, uiDocument);
 
@@ -61,42 +72,52 @@ namespace SpaceSim.Rendering.Bootstrap
             var labelController = gameObject.AddComponent<BodyLabelController>();
             labelController.Initialize(_registry, _currentSystem, mapRenderer, cameraController);
 
-            // Setup UI panels from shared UIDocument.
+            // UI panels.
             SetupUIPanels(clock);
 
             UnityEngine.Debug.Log($"[OrbitalSandboxCoordinator] Setup complete. System: {_currentSystem}");
         }
 
+        private StarSystem LoadStarSystem()
+        {
+            // Try loading from assigned data asset.
+            if (starSystemDefinition != null)
+            {
+                var system = StarSystemLoader.Load(starSystemDefinition, _registry);
+                if (system != null)
+                {
+                    UnityEngine.Debug.Log($"[OrbitalSandboxCoordinator] Loaded from asset: {starSystemDefinition.DisplayName}");
+                    return system;
+                }
+                UnityEngine.Debug.LogWarning("[OrbitalSandboxCoordinator] Asset assigned but loading failed. Falling back to sample.");
+            }
+
+            // Fallback to hardcoded sample.
+            UnityEngine.Debug.Log("[OrbitalSandboxCoordinator] Using built-in sample star system.");
+            return SampleStarSystemFactory.Create(_registry);
+        }
+
         private void SetupUIPanels(SimulationClock clock)
         {
             if (uiDocument == null) return;
-
             var uiRoot = uiDocument.rootVisualElement;
             if (uiRoot == null) return;
 
-            // Object list panel.
             var listPanel = gameObject.AddComponent<ObjectListPanelController>();
             listPanel.Initialize(_registry, _currentSystem, _selectionService);
             listPanel.SetupUI(uiRoot);
 
-            // Object details panel.
             var detailsPanel = gameObject.AddComponent<ObjectDetailsPanelController>();
             detailsPanel.Initialize(_registry, _selectionService);
             detailsPanel.SetupUI(uiRoot);
 
-            // Time controls panel.
             var timePanel = gameObject.AddComponent<TimeControlsPanelController>();
             timePanel.Initialize(clock);
             timePanel.SetupUI(uiRoot);
         }
 
-        /// <summary>Access to world registry for external queries.</summary>
         public WorldRegistry Registry => _registry;
-
-        /// <summary>Access to selection service.</summary>
         public SelectionService Selection => _selectionService;
-
-        /// <summary>Access to current star system.</summary>
         public StarSystem CurrentSystem => _currentSystem;
     }
 }

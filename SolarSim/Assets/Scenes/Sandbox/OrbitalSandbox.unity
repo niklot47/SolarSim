@@ -151,6 +151,7 @@ MonoBehaviour:
   mapRenderer: {fileID: 860145599}
   cameraController: {fileID: 137804995}
   uiDocument: {fileID: 1837812490}
+  starSystemDefinition: {fileID: 11400000, guid: 152fe9861eff72f429025f0ad47ecf5b, type: 2}
 --- !u!4 &81263134
 Transform:
   m_ObjectHideFlags: 0
@@ -448,8 +449,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Orbits.OrbitalMapRenderer
   defaultBodyMaterial: {fileID: 0}
-  baseLineWidth: 0.05
-  maxLineWidthMultiplier: 2
+  scaleConfig: {fileID: 11400000, guid: 6d4c6e166aa99794c9918fbfa574d086, type: 2}
   nearDistance: 20
   farDistance: 150
 --- !u!1 &1162873945

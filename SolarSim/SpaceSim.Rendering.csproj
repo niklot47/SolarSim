@@ -55,6 +55,7 @@
     <Compile Include="Assets\Scripts\Rendering\Bootstrap\OrbitalSandboxCoordinator.cs" />
     <Compile Include="Assets\Scripts\Rendering\Labels\BodyLabelController.cs" />
     <Compile Include="Assets\Scripts\Rendering\Selection\SelectionBridge.cs" />
+    <Compile Include="Assets\Scripts\Rendering\Bootstrap\StarSystemLoader.cs" />
     <Compile Include="Assets\Scripts\Rendering\Planets\CelestialBodyView.cs" />
     <Compile Include="Assets\Scripts\Rendering\Orbits\OrbitalMapRenderer.cs" />
     <Compile Include="Assets\Scripts\Rendering\Cameras\CameraFocusTarget.cs" />
@@ -1166,6 +1167,7 @@
     <ProjectReference Include="SpaceSim.Simulation.csproj" />
     <ProjectReference Include="SpaceSim.Debug.csproj" />
     <ProjectReference Include="SpaceSim.UI.csproj" />
+    <ProjectReference Include="SpaceSim.Data.csproj" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <ItemGroup>

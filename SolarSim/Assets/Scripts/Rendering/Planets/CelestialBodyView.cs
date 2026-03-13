@@ -1,87 +1,59 @@
 using UnityEngine;
 using SpaceSim.World.Entities;
+using SpaceSim.Data.Config;
 
-// Resolve ambiguity with UnityEngine.EntityId (Unity 6+).
 using EntityId = SpaceSim.Shared.Identifiers.EntityId;
 
 namespace SpaceSim.Rendering.Planets
 {
-    /// <summary>
-    /// MonoBehaviour representing a rendered celestial body in the scene.
-    /// Reads data from CelestialBody and applies visual state.
-    /// Future: support multiple representation modes / LOD.
-    /// </summary>
     public class CelestialBodyView : MonoBehaviour
     {
-        /// <summary>The entity id this view is bound to.</summary>
         public EntityId BoundEntityId { get; private set; } = EntityId.None;
-
-        /// <summary>The body type (cached for rendering decisions).</summary>
         public CelestialBodyType BodyType { get; private set; }
 
         private MeshRenderer _meshRenderer;
 
-        /// <summary>
-        /// Bind this view to a world entity.
-        /// </summary>
-        public void Bind(CelestialBody body)
+        public void Bind(CelestialBody body, SceneScaleConfig scaleConfig)
         {
             BoundEntityId = body.Id;
             BodyType = body.BodyType;
-
-            // Use ASCII-safe name: BodyType + entity id. No localized text in scene hierarchy.
             gameObject.name = $"Body_{body.BodyType}_{body.Id}";
-
-            ApplyScale(body.Radius);
+            ApplyScale(body.Radius, scaleConfig);
             ApplyColor(body.BodyType);
         }
 
-        /// <summary>
-        /// Update world position from simulation data.
-        /// </summary>
-        public void SetWorldPosition(Vector3 position)
+        public void SetWorldPosition(Vector3 scenePosition)
         {
-            transform.position = position;
+            transform.position = scenePosition;
         }
 
-        /// <summary>
-        /// Apply visual highlight state (e.g. selection).
-        /// </summary>
         public void SetHighlight(bool highlighted)
         {
             if (_meshRenderer == null)
                 _meshRenderer = GetComponentInChildren<MeshRenderer>();
-
             if (_meshRenderer != null && _meshRenderer.material != null)
             {
-                if (highlighted)
-                    _meshRenderer.material.SetColor("_EmissionColor", Color.white * 0.3f);
-                else
-                    _meshRenderer.material.SetColor("_EmissionColor", Color.black);
+                _meshRenderer.material.SetColor("_EmissionColor",
+                    highlighted ? Color.white * 0.3f : Color.black);
             }
         }
 
-        /// <summary>
-        /// Placeholder for future LOD / representation mode switching.
-        /// </summary>
-        public void SetRepresentationMode(int mode)
-        {
-            // Reserved for future LOD system. No-op for now.
-        }
+        public void SetRepresentationMode(int mode) { }
 
-        // --- Private helpers ---
-
-        private void ApplyScale(double radius)
+        private void ApplyScale(double worldRadius, SceneScaleConfig scaleConfig)
         {
-            float r = (float)radius;
-            transform.localScale = new Vector3(r * 2f, r * 2f, r * 2f);
+            float diameter;
+            if (scaleConfig != null)
+                diameter = scaleConfig.WorldToSceneDiameter(worldRadius);
+            else
+                diameter = (float)(worldRadius * 2.0);
+            transform.localScale = new Vector3(diameter, diameter, diameter);
         }
 
         private void ApplyColor(CelestialBodyType bodyType)
         {
             _meshRenderer = GetComponentInChildren<MeshRenderer>();
             if (_meshRenderer == null) return;
-
             Color color = bodyType switch
             {
                 CelestialBodyType.Star => new Color(1f, 0.9f, 0.3f),
@@ -91,9 +63,7 @@ namespace SpaceSim.Rendering.Planets
                 CelestialBodyType.Station => new Color(0.8f, 0.8f, 0.9f),
                 _ => Color.white
             };
-
             _meshRenderer.material.color = color;
-
             if (bodyType == CelestialBodyType.Star)
                 _meshRenderer.material.SetColor("_EmissionColor", color * 0.5f);
         }

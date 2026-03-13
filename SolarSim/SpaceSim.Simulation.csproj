@@ -53,6 +53,7 @@
     <Compile Include="Assets\Scripts\Simulation\Time\SimulationClock.cs" />
     <Compile Include="Assets\Scripts\Simulation\Orbits\OrbitalPositionCalculator.cs" />
     <Compile Include="Assets\Scripts\Simulation\Core\SelectionService.cs" />
+    <Compile Include="Assets\Scripts\Simulation\Core\StarSystemBuilder.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Scripts\Simulation\SpaceSim.Simulation.asmdef" />

@@ -1,0 +1,123 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f73384bd3b19e24f8e09b8166d5d06a, type: 3}
+  m_Name: SampleStarSystem
+  m_EditorClassIdentifier: SpaceSim.Data::SpaceSim.Data.Definitions.StarSystemDefinition
+  SystemKey: test_system
+  DisplayName: Test System
+  LocalizationKey: system.test
+  Bodies:
+  - Key: sol
+    DisplayName: Sol
+    LocalizationKey: body.sol
+    BodyType: 0
+    ParentKey: 
+    AttachmentMode: 0
+    Radius: 5
+    IsSelectable: 1
+    HasSurface: 0
+    SemiMajorAxis: 10
+    Eccentricity: 0
+    InclinationDeg: 0
+    LongitudeOfAscendingNodeDeg: 0
+    ArgumentOfPeriapsisDeg: 0
+    MeanAnomalyAtEpochDeg: 0
+    OrbitalPeriod: 100
+    EpochTime: 0
+    IsPrograde: 1
+    AxialTiltDeg: 0
+    RotationPeriod: 600
+    InitialRotationDeg: 0
+  - Key: terra
+    DisplayName: Terra
+    LocalizationKey: body.terra
+    BodyType: 1
+    ParentKey: sol
+    AttachmentMode: 1
+    Radius: 1.5
+    IsSelectable: 1
+    HasSurface: 1
+    SemiMajorAxis: 30
+    Eccentricity: 0
+    InclinationDeg: 0
+    LongitudeOfAscendingNodeDeg: 0
+    ArgumentOfPeriapsisDeg: 0
+    MeanAnomalyAtEpochDeg: 0
+    OrbitalPeriod: 120
+    EpochTime: 0
+    IsPrograde: 1
+    AxialTiltDeg: 0
+    RotationPeriod: 30
+    InitialRotationDeg: 0
+  - Key: ares
+    DisplayName: Ares
+    LocalizationKey: body.ares
+    BodyType: 1
+    ParentKey: sol
+    AttachmentMode: 1
+    Radius: 1
+    IsSelectable: 1
+    HasSurface: 1
+    SemiMajorAxis: 55
+    Eccentricity: 0
+    InclinationDeg: 0
+    LongitudeOfAscendingNodeDeg: 0
+    ArgumentOfPeriapsisDeg: 0
+    MeanAnomalyAtEpochDeg: 90
+    OrbitalPeriod: 240
+    EpochTime: 0
+    IsPrograde: 1
+    AxialTiltDeg: 0
+    RotationPeriod: 25
+    InitialRotationDeg: 0
+  - Key: luna
+    DisplayName: Luna
+    LocalizationKey: body.luna
+    BodyType: 2
+    ParentKey: terra
+    AttachmentMode: 1
+    Radius: 0.4
+    IsSelectable: 1
+    HasSurface: 1
+    SemiMajorAxis: 5
+    Eccentricity: 0
+    InclinationDeg: 0
+    LongitudeOfAscendingNodeDeg: 0
+    ArgumentOfPeriapsisDeg: 0
+    MeanAnomalyAtEpochDeg: 45
+    OrbitalPeriod: 20
+    EpochTime: 0
+    IsPrograde: 1
+    AxialTiltDeg: 0
+    RotationPeriod: 20
+    InitialRotationDeg: 0
+  - Key: venus
+    DisplayName: Venus
+    LocalizationKey: body.moon
+    BodyType: 2
+    ParentKey: terra
+    AttachmentMode: 1
+    Radius: 0.4
+    IsSelectable: 1
+    HasSurface: 1
+    SemiMajorAxis: 10
+    Eccentricity: 0
+    InclinationDeg: 0
+    LongitudeOfAscendingNodeDeg: 0
+    ArgumentOfPeriapsisDeg: 0
+    MeanAnomalyAtEpochDeg: 45
+    OrbitalPeriod: 30
+    EpochTime: 0
+    IsPrograde: 1
+    AxialTiltDeg: 0
+    RotationPeriod: 20
+    InitialRotationDeg: 0
