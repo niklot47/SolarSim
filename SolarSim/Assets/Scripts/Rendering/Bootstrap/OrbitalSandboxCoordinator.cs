@@ -21,6 +21,7 @@ namespace SpaceSim.Rendering.Bootstrap
     /// for the orbital sandbox scene.
     /// Loads star system from assigned data asset, or falls back to sample factory.
     /// Initializes and ticks ShipMovementSystem for travelling ships.
+    /// Initializes and ticks NPCShipScheduler for autonomous NPC traffic.
     /// </summary>
     public class OrbitalSandboxCoordinator : MonoBehaviour
     {
@@ -35,25 +36,26 @@ namespace SpaceSim.Rendering.Bootstrap
         [Tooltip("Assign a StarSystemDefinition asset. If empty, uses built-in sample system.")]
         [SerializeField] private StarSystemDefinition starSystemDefinition;
 
-        [Header("Ship Movement")]
-        [Tooltip("Delay in simulation seconds before the sample trade route starts.")]
-        [SerializeField] private double sampleRouteStartDelay = 2.0;
+        [Header("NPC Scheduling")]
+        [Tooltip("Minimum travel duration for NPC routes (sim-seconds).")]
+        [SerializeField] private double npcMinTravelDuration = 40.0;
 
-        [Tooltip("Duration in simulation seconds for the sample trade route.")]
-        [SerializeField] private double sampleRouteDuration = 60.0;
+        [Tooltip("Maximum travel duration for NPC routes (sim-seconds).")]
+        [SerializeField] private double npcMaxTravelDuration = 90.0;
+
+        [Tooltip("Idle delay at destination before next departure (sim-seconds).")]
+        [SerializeField] private double npcIdleDelay = 3.0;
 
         // Services.
         private WorldRegistry _registry;
         private StarSystem _currentSystem;
         private SelectionService _selectionService;
         private ShipMovementSystem _shipMovement;
+        private NPCShipScheduler _npcScheduler;
         private SimulationClock _clock;
 
         // UI panel references for dynamic refresh.
         private ObjectListPanelController _listPanel;
-
-        // Sample route state.
-        private bool _sampleRouteStarted;
 
         /// <summary>
         /// Initialize and build the sandbox. Called from GameBootstrap.
@@ -77,6 +79,17 @@ namespace SpaceSim.Rendering.Bootstrap
             _shipMovement = new ShipMovementSystem(_registry);
             _shipMovement.OnShipArrived += OnShipArrived;
 
+            // Initialize NPC scheduler.
+            _npcScheduler = new NPCShipScheduler(
+                _registry,
+                _shipMovement,
+                () => _clock.CurrentTime,
+                npcMinTravelDuration,
+                npcMaxTravelDuration,
+                npcIdleDelay
+            );
+            _npcScheduler.OnRouteScheduled += OnNpcRouteScheduled;
+
             // Initialize renderer.
             if (mapRenderer != null)
             {
@@ -99,7 +112,9 @@ namespace SpaceSim.Rendering.Bootstrap
             // UI panels.
             SetupUIPanels(clock);
 
-            UnityEngine.Debug.Log($"[OrbitalSandboxCoordinator] Setup complete. System: {_currentSystem}");
+            UnityEngine.Debug.Log(
+                $"[OrbitalSandboxCoordinator] Setup complete. System: {_currentSystem}. " +
+                $"NPC scheduler active ({_npcScheduler.GetStatus()}).");
         }
 
         private void Update()
@@ -108,21 +123,30 @@ namespace SpaceSim.Rendering.Bootstrap
 
             double simTime = _clock.CurrentTime;
 
-            // Start sample route after a small delay.
-            if (!_sampleRouteStarted && simTime >= sampleRouteStartDelay)
-            {
-                StartSampleRoute(simTime);
-                _sampleRouteStarted = true;
-            }
-
             // Tick ship movement — pass position resolver from renderer.
             _shipMovement.Update(simTime, (bodyId, time) => mapRenderer.ResolveWorldPosition(bodyId, time));
+
+            // Tick NPC scheduler — assigns new routes to idle NPC ships.
+            _npcScheduler?.Update();
         }
 
         private void OnDestroy()
         {
             if (_shipMovement != null)
                 _shipMovement.OnShipArrived -= OnShipArrived;
+
+            if (_npcScheduler != null)
+                _npcScheduler.OnRouteScheduled -= OnNpcRouteScheduled;
+        }
+
+        /// <summary>
+        /// Called when NPC scheduler starts a new route for a ship.
+        /// Handles transit parenting and UI refresh.
+        /// </summary>
+        private void OnNpcRouteScheduled(EntityId shipId)
+        {
+            ParentToRootForTransit(shipId);
+            RefreshObjectList();
         }
 
         /// <summary>
@@ -197,60 +221,6 @@ namespace SpaceSim.Rendering.Bootstrap
         {
             if (_listPanel != null)
                 _listPanel.Refresh();
-        }
-
-        /// <summary>
-        /// Start a sample trade route: Trader ship (Cargo-7) flies from Terra to Ares.
-        /// </summary>
-        private void StartSampleRoute(double currentSimTime)
-        {
-            // Find the trader ship by ShipKey.
-            CelestialBody traderShip = null;
-            EntityId destinationId = EntityId.None;
-
-            foreach (var bodyId in _currentSystem.AllBodyIds)
-            {
-                var body = _registry.GetCelestialBody(bodyId);
-                if (body == null) continue;
-
-                if (body.BodyType == CelestialBodyType.Ship
-                    && body.ShipInfo != null
-                    && body.ShipInfo.ShipKey == "ship_cargo7")
-                {
-                    traderShip = body;
-                }
-
-                // Find Ares by localization key.
-                if (body.LocalizationKeyName == "body.ares")
-                {
-                    destinationId = body.Id;
-                }
-            }
-
-            if (traderShip != null && destinationId.IsValid)
-            {
-                bool started = _shipMovement.StartRoute(
-                    traderShip.Id, destinationId, currentSimTime, sampleRouteDuration);
-
-                if (started)
-                {
-                    // Parent the travelling ship to the root star so it stays in the object list.
-                    ParentToRootForTransit(traderShip.Id);
-
-                    // Refresh list to reflect departure.
-                    RefreshObjectList();
-
-                    UnityEngine.Debug.Log(
-                        $"[OrbitalSandboxCoordinator] Sample route started: " +
-                        $"{traderShip.DisplayName} -> destination {destinationId} " +
-                        $"duration={sampleRouteDuration:F0}s");
-                }
-            }
-            else
-            {
-                UnityEngine.Debug.LogWarning(
-                    "[OrbitalSandboxCoordinator] Could not start sample route — ship or destination not found.");
-            }
         }
 
         private StarSystem LoadStarSystem()

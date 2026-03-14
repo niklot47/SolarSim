@@ -49,21 +49,17 @@
     <Analyzer Include="C:\MyPrograms\Unity\Hub\Editor\6000.3.10f1\Editor\Data\Tools\BuildPipeline\Unity.SourceGenerators\Unity.UIToolkit.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets\Scripts\Rendering\Bootstrap\GameBootstrap.cs" />
-    <Compile Include="Assets\Scripts\Debug\RingBuffer.cs" />
-    <Compile Include="Assets\Scripts\Debug\GameDebug.cs" />
-    <Compile Include="Assets\Scripts\Simulation\Time\SimulationClock.cs" />
-    <Compile Include="Assets\Scripts\Shared\Identifiers\EntityId.cs" />
-    <Compile Include="Assets\Scripts\World\Entities\WorldEntity.cs" />
-    <Compile Include="Assets\Scripts\Debug\DebugEvent.cs" />
+    <Compile Include="Assets\_PatchInstructions\OrbitalSandboxCoordinator_PATCH.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\ParallelCascades\ProceduralShaders\HLSL\Hash.hlsl" />
     <None Include="Assets\ParallelCascades\ProceduralShaders\HLSL\GetMainLightDirectionLegacy.hlsl" />
+    <None Include="Assets\UI\UXML\OrbitalSandboxScreen.uxml" />
     <None Include="Assets\ParallelCascades\ProceduralShaders\HLSL\DoubleWarp.hlsl" />
     <None Include="Assets\ParallelCascades\ProceduralShaders\HLSL\FractalNoise.hlsl" />
     <None Include="Assets\ParallelCascades\ProceduralShaders\HLSL\VoronoiNoise2D.hlsl" />
     <None Include="Assets\ParallelCascades\ProceduralShaders\HLSL\SphericalCoordinateUtilities.hlsl" />
+    <None Include="Assets\UI\USS\OrbitalSandboxScreen.uss" />
     <None Include="Assets\ParallelCascades\ProceduralShaders\HLSL\SmoothMath.hlsl" />
     <None Include="Assets\ParallelCascades\ProceduralShaders\HLSL\GetMainLightProperties.hlsl" />
     <None Include="Assets\ParallelCascades\ProceduralPlanetGenerationCommon\Shaders\HLSL\DomainWarpSampleTexture.hlsl" />
@@ -1225,12 +1221,12 @@
       <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.RenderPipelines.Core.Runtime">
-      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Runtime.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="Unity.VisualScripting.Flow">
       <HintPath>Library\ScriptAssemblies\Unity.VisualScripting.Flow.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.RenderPipelines.Core.Runtime">
+      <HintPath>Library\ScriptAssemblies\Unity.RenderPipelines.Core.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Unity.TextMeshPro.Editor">
@@ -1335,15 +1331,22 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="SpaceSim.UI.csproj" />
     <ProjectReference Include="ParallelCascades.ProceduralShaders.Editor.csproj" />
     <ProjectReference Include="ParallelCascades.ProceduralPlanetGenerationCommon.PostProcessing.csproj" />
-    <ProjectReference Include="ParallelCascades.ProceduralPlanetGenerationCommon.Editor.csproj" />
+    <ProjectReference Include="SpaceSim.Shared.csproj" />
+    <ProjectReference Include="SpaceSim.World.csproj" />
+    <ProjectReference Include="SpaceSim.Rendering.csproj" />
     <ProjectReference Include="ParallelCascades.Common.Runtime.csproj" />
+    <ProjectReference Include="ParallelCascades.ProceduralPlanetGenerationCommon.Editor.csproj" />
     <ProjectReference Include="ParallelCascades.ProceduralShaders.Runtime.csproj" />
     <ProjectReference Include="ParallelCascades.Common.Editor.csproj" />
+    <ProjectReference Include="SpaceSim.Data.csproj" />
     <ProjectReference Include="ParallelCascades.ProceduralPlanetGeneration.Runtime.csproj" />
+    <ProjectReference Include="SpaceSim.Simulation.csproj" />
     <ProjectReference Include="ParallelCascades.ProceduralPlanetGenerationLite.Editor.csproj" />
     <ProjectReference Include="ParallelCascades.ProceduralPlanetGenerationCommon.Runtime.csproj" />
+    <ProjectReference Include="SpaceSim.Debug.csproj" />
     <ProjectReference Include="ParallelCascades.ProceduralPlanetGenerationLite.Runtime.csproj" />
     <ProjectReference Include="ParallelCascades.Common.Rendering.csproj" />
   </ItemGroup>
