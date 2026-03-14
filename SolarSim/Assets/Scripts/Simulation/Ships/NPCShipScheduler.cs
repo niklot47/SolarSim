@@ -251,8 +251,10 @@ namespace SpaceSim.Simulation.Ships
             _destinationCandidates.Clear();
             foreach (var body in _registry.AllCelestialBodies)
             {
+                // Planets, moons, and stations are valid destinations.
                 if (body.BodyType == CelestialBodyType.Planet ||
-                    body.BodyType == CelestialBodyType.Moon)
+                    body.BodyType == CelestialBodyType.Moon ||
+                    body.BodyType == CelestialBodyType.Station)
                 {
                     _destinationCandidates.Add(body.Id);
                 }

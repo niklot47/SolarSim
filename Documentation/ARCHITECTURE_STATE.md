@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 4 — Anchored Travel + Local-Frame Routes + NPC Scheduling.
+Last updated after: Step 7 — SOI Foundation.
 
 ------------------------------------------------------------------------
 
@@ -19,20 +19,39 @@ Last updated after: Step 4 — Anchored Travel + Local-Frame Routes + NPC Schedu
 - Context menu actions on GameBootstrap for editor debugging
 
 ### Orbital Sandbox
-- **CelestialBody** — domain entity with orbital/spin data, parent-child hierarchy, ShipInfo
+- **CelestialBody** — domain entity with orbital/spin data, parent-child hierarchy, ShipInfo, StationInfo, SOIRadius
 - **StarSystem** — container for body ids
 - **WorldRegistry** — central entity lookup
-- **OrbitalPositionCalculator** — circular orbit positions in XZ plane (MVP)
-- **OrbitalMapRenderer** — sphere primitives, orbit line renderers (local space), travelling ship support
-- **CelestialBodyView** — visual binding with role-based ship colors
+- **OrbitalPositionCalculator** — circular orbit positions in XZ plane (MVP) + surface position from lat/lon
+- **OrbitalMapRenderer** — scene visuals (spheres for bodies, cubes for stations), orbit lines, delegates position resolution to WorldPositionResolver
+- **CelestialBodyView** — visual binding with role-based ship colors, station kind colors, station scale ×⅓
+
+### World Position Resolution
+- **WorldPositionResolver** — single source of truth for body world positions (Simulation layer, pure C#)
+  - Orbital bodies: recursive parent chain + OrbitalPositionCalculator
+  - Surface stations: parent position + lat/lon surface offset
+  - Travelling ships: OverrideWorldPosition passthrough
+  - Root bodies: position at origin
+- OrbitalMapRenderer is a thin consumer — no simulation logic in Rendering
 
 ### Star System Data Loading
-- **CelestialBodyDefinition / ShipDefinition** — serializable Inspector-authored data
-- **StarSystemDefinition** — ScriptableObject with body list + ship list
-- **StarSystemBuilder** — pure C# builder (4 phases: create, parents, register, ships)
-- **StarSystemLoader** — Unity-side adapter
-- **SampleSystemAssetCreator** — editor menu to create sample asset
-- **SampleStarSystemFactory** — hardcoded fallback (Sol, Terra, Ares, Luna + 3 ships)
+- **CelestialBodyDefinition / ShipDefinition / StationDefinition** — serializable Inspector-authored data
+- **StarSystemDefinition** — ScriptableObject with body list + ship list + station list
+- **StarSystemBuilder** — pure C# builder (5 phases: create, parents, register, ships, stations)
+- **StarSystemLoader** — Unity-side adapter, converts all definition types to build data
+- **SampleSystemAssetCreator** — editor menu to create sample asset (with ships + stations + SOI values)
+- **SampleStarSystemFactory** — hardcoded fallback (Sol, Terra, Ares, Venus, Luna + 3 ships + 2 stations + SOI)
+
+### Stations Foundation
+- Two station kinds: **Orbital** (AttachmentMode.Orbit) and **Surface** (AttachmentMode.Surface)
+- **StationInfo** — station metadata: StationKind, SurfaceLatitudeDeg, SurfaceLongitudeDeg
+- **StationDefinition** — Inspector-authored station data
+- Orbital stations: orbit + optional spin, orbit lines, cube visual (cyan)
+- Surface stations: fixed position on parent surface via lat/lon, no orbit line, cube visual (orange)
+- Station cubes rendered at ⅓ scale for visual clarity
+- Ships can travel to stations; on arrival, enter orbit around station (no docking)
+- ShipMovementSystem uses small station orbit (radius=0.5, period=8) for station destinations
+- NPCShipScheduler includes stations as valid NPC destinations
 
 ### Selection and Interaction
 - **SelectionService** — pure C# selection state with events
@@ -41,10 +60,10 @@ Last updated after: Step 4 — Anchored Travel + Local-Frame Routes + NPC Schedu
 
 ### UI Panels
 - **ObjectListPanelController** — hierarchical body list, dynamic refresh on hierarchy changes
-- **ObjectDetailsPanelController** — body properties + ship role/class/state/destination
+- **ObjectDetailsPanelController** — body properties, ship role/class/state/destination/SOI body, station kind/attachment, SOI radius for bodies
 - **TimeControlsPanelController** — pause + x1/x10/x100
-- **UIStrings** — Russian strings: body types, ship roles, ship states
-- **OrbitalSandboxScreen.uxml/.uss** — root layout
+- **UIStrings** — Russian strings: body types, ship roles, ship states, station kinds, attachment modes, SOI labels
+- **OrbitalSandboxScreen.uxml/.uss** — root layout with station and SOI detail rows
 
 ### Camera and Labels
 - **OrbitalCameraController** — pan/zoom/rotate/smooth focus (Input System)
@@ -71,24 +90,41 @@ Last updated after: Step 4 — Anchored Travel + Local-Frame Routes + NPC Schedu
     - **Global frame**: lerp between fixed world positions (interplanetary travel)
     - **LocalParent frame**: lerp in local coordinates relative to dominant parent, converted to world each tick (local transfers like Planet↔Moon)
   - Frame auto-selection: Star children use Global, Planet children use LocalParent
+  - Extended frame logic for station destinations (Cases 4-5)
   - Phase-matched orbit assignment on arrival (no visible snap)
+  - Station arrivals use small orbit (radius=0.5, period=8)
   - **OnShipArrived** event for UI refresh
 
 ### NPC Scheduling
 - **NPCShipScheduler** — pure C# scheduler, role-based route selection
-  - Trader/Civilian: random planet/moon destination
+  - Trader/Civilian: random planet/moon/station destination
   - Patrol: ping-pong between two bodies
   - Player ships ignored
   - Distance-based travel duration: `duration = distance / travelSpeed`
   - Local-frame distance computation for local routes
   - Configurable via Inspector: TravelSpeed, MinTravelDuration, IdleDelay
   - Live tuning: coordinator syncs Inspector values every frame
-  - Position resolver for anchored travel computation
+  - Position resolver delegates to WorldPositionResolver
   - Ticked by OrbitalSandboxCoordinator after ShipMovementSystem
+
+### SOI Foundation (Sphere of Influence)
+- **CelestialBody.SOIRadius** — nullable double, defines sphere of influence in Mm
+- **ShipInfo.CurrentSOIBodyId** — tracks which body's SOI currently dominates each ship
+- **SOIResolver** — pure C# service in Simulation layer
+  - `IsInsideSOI(bodyId, worldPosition, simTime)` — point containment check
+  - `ResolveDominantBody(worldPosition, simTime)` — find deepest containing SOI body
+  - `ResolveDominantBodyForShip(ship, simTime)` — resolve for ship using WorldPositionResolver
+  - `UpdateAllShips(simTime)` — batch update all ships, returns list of SOITransition
+  - Dominance rule: smallest SOI radius wins (deepest/most specific body)
+  - Cached body list with invalidation
+- **SOITransition** — struct recording ship SOI changes (previous/new body, sim time)
+- SOI transitions logged to Unity console by coordinator
+- UI details panel shows dominant SOI body for ships, SOI radius for celestial bodies
+- Sample system SOI values: Sol=1000, Terra=60, Ares=40, Venus=30, Luna=8
 
 ### Bootstrap and Coordination
 - **GameBootstrap** — creates clock, initializes debug, calls coordinator
-- **OrbitalSandboxCoordinator** — loads system, creates ShipMovementSystem + NPCShipScheduler, wires everything, manages transit parenting and UI refresh, syncs NPC parameters from Inspector
+- **OrbitalSandboxCoordinator** — loads system, creates WorldPositionResolver + SOIResolver + ShipMovementSystem + NPCShipScheduler, wires everything, manages transit parenting, ticks SOI updates, logs SOI transitions, syncs NPC parameters from Inspector
 
 ------------------------------------------------------------------------
 
@@ -111,6 +147,16 @@ Last updated after: Step 4 — Anchored Travel + Local-Frame Routes + NPC Schedu
 - Add WorldRegistry.GetShip() accessor
 - Straightforward refactor, no architectural breakage
 
+### Stations as CelestialBody + StationInfo
+
+**Why acceptable now:**
+- Stations share hierarchy, orbits, rendering, selection with celestial bodies
+- StationInfo keeps station-specific data contained
+- Surface/orbital distinction via AttachmentMode + StationKind
+
+**When to change:**
+- If stations gain complex state (docking ports, cargo storage, production)
+
 ### Transit parenting to root star
 
 During travel, ships are temporarily parented to the system's root star so they remain visible in the hierarchical object list. The actual position comes from ShipMovementSystem via OverrideWorldPosition, not from orbital calculation. On arrival, transit parent is cleaned up.
@@ -119,21 +165,24 @@ During travel, ships are temporarily parented to the system's root star so they 
 
 NPC scheduling parameters (travelSpeed, minTravelDuration, idleDelay) use `float` in SerializeField because Unity Inspector does not serialize `double`. Coordinator converts to double when passing to pure C# systems.
 
+### SOI values are authored placeholders
+
+Current SOI radii are hand-picked for visual testing, not astrophysically accurate. Future work may compute SOI from mass ratios or orbital parameters.
+
 ------------------------------------------------------------------------
 
 ## Deferred Systems
 
 | System | Notes |
 |---|---|
-| Stations | CelestialBodyType.Station exists in enum |
-| Docking | Requires stations + proximity |
+| Docking | Requires proximity + station SOI interaction |
 | Economy | Resources, production, consumption, pricing |
 | Cargo | Ship inventory, trade goods |
 | Contracts | Task definition, assignment |
 | Factions | Entities, relationships, territory |
 | AI behavior | Autonomous ship decisions |
-| Advanced navigation | Pathfinding, waypoints |
-| Orbital transfers | Hohmann, delta-v |
+| Advanced navigation | Pathfinding, waypoints, SOI-aware routing |
+| Orbital transfers | Hohmann, delta-v, patched conics (SOI foundation ready) |
 | Combat | Weapons, damage |
 | Ship modules | Equipment slots |
 | Save/Load | WorldRegistry serialization |
@@ -141,6 +190,8 @@ NPC scheduling parameters (travelSpeed, minTravelDuration, idleDelay) use `float
 | Elliptical orbits | Kepler equation solver |
 | Inclined orbits | 3D orbit planes |
 | LOD system | CelestialBodyView.SetRepresentationMode() stub exists |
+| SOI visualization | Debug gizmo/wireframe spheres for SOI boundaries |
+| SOI-based reparenting | Automatic orbit conversion on SOI crossing |
 
 ------------------------------------------------------------------------
 
@@ -148,8 +199,11 @@ NPC scheduling parameters (travelSpeed, minTravelDuration, idleDelay) use `float
 
 ### Clean boundaries maintained
 - Simulation and World layers have zero UnityEngine references (asmdef enforced)
+- WorldPositionResolver is pure C# in Simulation — single source of truth for positions
+- SOIResolver is pure C# in Simulation — uses WorldPositionResolver, no rendering dependency
 - ShipMovementSystem is pure C# despite coordinating with rendering via delegate
 - NPCShipScheduler is pure C# with position resolver injected via delegate
+- OrbitalMapRenderer contains zero simulation logic — only consumes resolved positions
 - All rendering in Rendering layer, all UI in UI layer
 
 ### Known technical debt
@@ -159,15 +213,19 @@ NPC scheduling parameters (travelSpeed, minTravelDuration, idleDelay) use `float
 - Ship travel is linear interpolation (not physically realistic, but visually correct)
 - Transit parenting is a UI convenience hack
 - ObjectListPanelController.Refresh() rebuilds entire list (fine at current scale)
+- SOI values are placeholder approximations
+- Surface station position is fixed relative to parent (no spin coupling)
 
 ------------------------------------------------------------------------
 
 ## Next Recommended Development Phase
 
-**Option A: Stations Foundation** — introduce stations as orbital structures distinct from planets. Enables future trade/logistics. Ships can travel to stations.
+**Option A: Docking Foundation** — ships can dock at orbital stations. Requires proximity detection, docking state, basic docking port concept.
 
 **Option B: Economy Foundation** — resource types, production, cargo. Larger step but opens core gameplay.
 
-**Option C: More Ship Types / Civilian Traffic** — add more ships, civilian role behavior, make the sandbox feel busier.
+**Option C: SOI-Aware Navigation** — use SOI data to improve route frame selection, add capture/escape transitions, prepare for patched conics.
 
-Recommendation: **Option A** — stations are the next natural docking/trade target and validate the movement system with a new entity type.
+**Option D: More Ship Types / Civilian Traffic** — add more ships, civilian role behavior, make the sandbox feel busier.
+
+Recommendation: **Option A** — docking is the natural next step after stations + SOI. Ships already arrive at stations into orbit; docking adds the first meaningful station interaction.

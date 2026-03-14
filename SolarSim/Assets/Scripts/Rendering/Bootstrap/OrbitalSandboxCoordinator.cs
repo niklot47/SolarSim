@@ -3,6 +3,7 @@ using UnityEngine.UIElements;
 using SpaceSim.Data.Definitions;
 using SpaceSim.Simulation.Core;
 using SpaceSim.Simulation.Ships;
+using SpaceSim.Simulation.SOI;
 using SpaceSim.Simulation.Time;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
@@ -47,6 +48,8 @@ namespace SpaceSim.Rendering.Bootstrap
         private SelectionService _selectionService;
         private ShipMovementSystem _shipMovement;
         private NPCShipScheduler _npcScheduler;
+        private WorldPositionResolver _positionResolver;
+        private SOIResolver _soiResolver;
         private SimulationClock _clock;
         private ObjectListPanelController _listPanel;
 
@@ -63,6 +66,10 @@ namespace SpaceSim.Rendering.Bootstrap
                 return;
             }
 
+            // Create simulation-side services.
+            _positionResolver = new WorldPositionResolver(_registry);
+            _soiResolver = new SOIResolver(_registry, _positionResolver);
+
             _shipMovement = new ShipMovementSystem(_registry);
             _shipMovement.OnShipArrived += OnShipArrived;
 
@@ -73,10 +80,11 @@ namespace SpaceSim.Rendering.Bootstrap
 
             if (mapRenderer != null)
             {
-                mapRenderer.Initialize(_registry, _currentSystem, clock);
+                mapRenderer.Initialize(_registry, _currentSystem, clock, _positionResolver);
                 mapRenderer.BuildSceneObjects();
+
                 _npcScheduler.SetPositionResolver(
-                    (bodyId, time) => mapRenderer.ResolveWorldPosition(bodyId, time));
+                    (bodyId, time) => _positionResolver.Resolve(bodyId, time));
             }
 
             var selectionBridge = gameObject.AddComponent<SelectionBridge>();
@@ -90,14 +98,18 @@ namespace SpaceSim.Rendering.Bootstrap
 
             SetupUIPanels(clock);
 
+            // Initial SOI pass for all ships.
+            _soiResolver.UpdateAllShips(_clock.CurrentTime);
+
             UnityEngine.Debug.Log(
                 $"[OrbitalSandboxCoordinator] Setup complete. System: {_currentSystem}. " +
+                $"{_soiResolver.GetStatus()}. " +
                 $"NPC: speed={npcTravelSpeed:F1} minDur={npcMinTravelDuration:F1} idle={npcIdleDelay:F1}");
         }
 
         private void Update()
         {
-            if (_clock == null || _shipMovement == null || mapRenderer == null) return;
+            if (_clock == null || _shipMovement == null || _positionResolver == null) return;
 
             if (_npcScheduler != null)
             {
@@ -107,8 +119,22 @@ namespace SpaceSim.Rendering.Bootstrap
             }
 
             double simTime = _clock.CurrentTime;
-            _shipMovement.Update(simTime, (bodyId, time) => mapRenderer.ResolveWorldPosition(bodyId, time));
+
+            _shipMovement.Update(simTime, (bodyId, time) => _positionResolver.Resolve(bodyId, time));
             _npcScheduler?.Update();
+
+            // Update SOI tracking for all ships after movement.
+            if (_soiResolver != null)
+            {
+                var transitions = _soiResolver.UpdateAllShips(simTime);
+                if (transitions != null)
+                {
+                    foreach (var t in transitions)
+                    {
+                        LogSOITransition(t);
+                    }
+                }
+            }
         }
 
         private void OnDestroy()
@@ -140,6 +166,20 @@ namespace SpaceSim.Rendering.Bootstrap
             UnityEngine.Debug.Log(
                 $"[OrbitalSandboxCoordinator] Ship arrived: " +
                 $"{ship?.DisplayName ?? shipId.ToString()} at {dest?.DisplayName ?? destinationId.ToString()}");
+        }
+
+        private void LogSOITransition(SOITransition t)
+        {
+            var ship = _registry.GetCelestialBody(t.ShipId);
+            var prevBody = _registry.GetCelestialBody(t.PreviousBodyId);
+            var newBody = _registry.GetCelestialBody(t.NewBodyId);
+
+            string shipName = ship?.DisplayName ?? t.ShipId.ToString();
+            string prevName = prevBody != null ? prevBody.DisplayName : (t.PreviousBodyId.IsValid ? t.PreviousBodyId.ToString() : "none");
+            string newName = newBody != null ? newBody.DisplayName : (t.NewBodyId.IsValid ? t.NewBodyId.ToString() : "none");
+
+            UnityEngine.Debug.Log(
+                $"[SOI] {shipName}: {prevName} -> {newName} (t={t.SimTime:F1})");
         }
 
         private void RemoveFromTransitParent(EntityId shipId)
@@ -212,5 +252,7 @@ namespace SpaceSim.Rendering.Bootstrap
         public SelectionService Selection => _selectionService;
         public StarSystem CurrentSystem => _currentSystem;
         public ShipMovementSystem ShipMovement => _shipMovement;
+        public WorldPositionResolver PositionResolver => _positionResolver;
+        public SOIResolver SOI => _soiResolver;
     }
 }

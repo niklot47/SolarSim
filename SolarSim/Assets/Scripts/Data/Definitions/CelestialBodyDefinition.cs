@@ -37,6 +37,11 @@ namespace SpaceSim.Data.Definitions
         public bool IsSelectable = true;
         public bool HasSurface = false;
 
+        [Header("Sphere of Influence")]
+        [Tooltip("SOI radius in world units (Mm). 0 or negative = no SOI. " +
+                 "Used by SOIResolver to determine dominant body for ships.")]
+        public double SOIRadius = 0.0;
+
         [Header("Orbit (ignored for root bodies)")]
         [Tooltip("Semi-major axis in world units (Mm).")]
         public double SemiMajorAxis = 10.0;

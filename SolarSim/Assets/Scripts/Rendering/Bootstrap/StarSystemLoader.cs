@@ -47,6 +47,7 @@ namespace SpaceSim.Rendering.Bootstrap
                     Radius = bodyDef.Radius,
                     IsSelectable = bodyDef.IsSelectable,
                     HasSurface = bodyDef.HasSurface,
+                    SOIRadius = bodyDef.SOIRadius,
 
                     SemiMajorAxis = bodyDef.SemiMajorAxis,
                     Eccentricity = bodyDef.Eccentricity,
@@ -64,7 +65,6 @@ namespace SpaceSim.Rendering.Bootstrap
                 });
             }
 
-            // Convert ship definitions.
             if (def.Ships != null)
             {
                 foreach (var shipDef in def.Ships)
@@ -81,6 +81,28 @@ namespace SpaceSim.Rendering.Bootstrap
                         OrbitalRadius = shipDef.OrbitalRadius,
                         OrbitalPeriod = shipDef.OrbitalPeriod,
                         StartAngleDeg = shipDef.StartAngleDeg
+                    });
+                }
+            }
+
+            if (def.Stations != null)
+            {
+                foreach (var stDef in def.Stations)
+                {
+                    data.Stations.Add(new StationBuildData
+                    {
+                        Key = stDef.Key,
+                        DisplayName = stDef.DisplayName,
+                        LocalizationKey = stDef.LocalizationKey,
+                        Kind = (int)stDef.Kind,
+                        ParentBodyKey = stDef.ParentBodyKey,
+                        Radius = stDef.Radius,
+                        OrbitalRadius = stDef.OrbitalRadius,
+                        OrbitalPeriod = stDef.OrbitalPeriod,
+                        StartAngleDeg = stDef.StartAngleDeg,
+                        RotationPeriod = stDef.RotationPeriod,
+                        SurfaceLatitudeDeg = stDef.SurfaceLatitudeDeg,
+                        SurfaceLongitudeDeg = stDef.SurfaceLongitudeDeg
                     });
                 }
             }

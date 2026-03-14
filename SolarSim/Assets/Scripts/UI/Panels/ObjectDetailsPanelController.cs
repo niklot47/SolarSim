@@ -13,8 +13,9 @@ namespace SpaceSim.UI.Panels
     /// <summary>
     /// UI Toolkit controller for the object details panel.
     /// Shows properties of the currently selected celestial body.
-    /// Displays additional ship-specific fields when a ship is selected:
-    /// role, class, state, and destination (if travelling).
+    /// Displays additional ship-specific fields when a ship is selected.
+    /// Displays station-specific fields when a station is selected.
+    /// Shows SOI info for bodies and dominant body for ships.
     /// </summary>
     public class ObjectDetailsPanelController : MonoBehaviour
     {
@@ -39,8 +40,19 @@ namespace SpaceSim.UI.Panels
         private Label _stateValue;
         private VisualElement _shipDestRow;
         private Label _destValue;
+        private VisualElement _shipSOIRow;
+        private Label _soiBodyValue;
 
-        // Track selected id for live updates during travel.
+        // Station-specific UI elements.
+        private VisualElement _stationKindRow;
+        private Label _stationKindValue;
+        private VisualElement _attachmentRow;
+        private Label _attachmentValue;
+
+        // SOI radius row (for non-ship bodies with SOI).
+        private VisualElement _soiRadiusRow;
+        private Label _soiRadiusValue;
+
         private EntityId _currentSelectionId = EntityId.None;
 
         public void Initialize(WorldRegistry registry, SelectionService selectionService)
@@ -58,9 +70,6 @@ namespace SpaceSim.UI.Panels
                 _selectionService.OnSelectionChanged -= OnSelectionChanged;
         }
 
-        /// <summary>
-        /// Build the UI from a shared root VisualElement.
-        /// </summary>
         public void SetupUI(VisualElement root)
         {
             _root = root;
@@ -78,13 +87,12 @@ namespace SpaceSim.UI.Panels
             _radiusValue = _root.Q<Label>("details-radius-value");
             _parentValue = _root.Q<Label>("details-parent-value");
 
-            // Set static labels from localization.
             SetLabel(_root, "details-name-label", UIStrings.Get("panel.details.name"));
             SetLabel(_root, "details-type-label", UIStrings.Get("panel.details.type"));
             SetLabel(_root, "details-radius-label", UIStrings.Get("panel.details.radius"));
             SetLabel(_root, "details-parent-label", UIStrings.Get("panel.details.parent"));
 
-            // Ship-specific rows.
+            // Ship rows.
             _shipRoleRow = _root.Q<VisualElement>("details-role-row");
             _roleValue = _root.Q<Label>("details-role-value");
             _shipClassRow = _root.Q<VisualElement>("details-class-row");
@@ -93,23 +101,41 @@ namespace SpaceSim.UI.Panels
             _stateValue = _root.Q<Label>("details-state-value");
             _shipDestRow = _root.Q<VisualElement>("details-dest-row");
             _destValue = _root.Q<Label>("details-dest-value");
+            _shipSOIRow = _root.Q<VisualElement>("details-soi-row");
+            _soiBodyValue = _root.Q<Label>("details-soi-value");
 
             SetLabel(_root, "details-role-label", UIStrings.Get("panel.details.role"));
             SetLabel(_root, "details-class-label", UIStrings.Get("panel.details.ship_class"));
             SetLabel(_root, "details-state-label", UIStrings.Get("panel.details.state"));
             SetLabel(_root, "details-dest-label", UIStrings.Get("panel.details.destination"));
+            SetLabel(_root, "details-soi-label", UIStrings.Get("panel.details.soi_body"));
 
-            // Start with no selection visible.
+            // Station rows.
+            _stationKindRow = _root.Q<VisualElement>("details-stationkind-row");
+            _stationKindValue = _root.Q<Label>("details-stationkind-value");
+            _attachmentRow = _root.Q<VisualElement>("details-attachment-row");
+            _attachmentValue = _root.Q<Label>("details-attachment-value");
+
+            SetLabel(_root, "details-stationkind-label", UIStrings.Get("panel.details.station_kind"));
+            SetLabel(_root, "details-attachment-label", UIStrings.Get("panel.details.attachment"));
+
+            // SOI radius row (for bodies).
+            _soiRadiusRow = _root.Q<VisualElement>("details-soiradius-row");
+            _soiRadiusValue = _root.Q<Label>("details-soiradius-value");
+            SetLabel(_root, "details-soiradius-label", UIStrings.Get("panel.details.soi_radius"));
+
             ShowNoSelection();
         }
 
         private void Update()
         {
-            // Live update ship state/destination while selected.
             if (!_currentSelectionId.IsValid) return;
             var body = _registry?.GetCelestialBody(_currentSelectionId);
-            if (body == null || body.ShipInfo == null) return;
-            UpdateShipDynamicFields(body);
+            if (body == null) return;
+
+            // Live update ship dynamic fields.
+            if (body.ShipInfo != null)
+                UpdateShipDynamicFields(body);
         }
 
         private void OnSelectionChanged(EntityId previousId, EntityId newId)
@@ -168,6 +194,7 @@ namespace SpaceSim.UI.Panels
             SetRowVisible(_shipClassRow, isShip);
             SetRowVisible(_shipStateRow, isShip);
             SetRowVisible(_shipDestRow, isShip);
+            SetRowVisible(_shipSOIRow, isShip);
 
             if (isShip)
             {
@@ -180,11 +207,30 @@ namespace SpaceSim.UI.Panels
 
                 UpdateShipDynamicFields(body);
             }
+
+            // Station-specific fields.
+            bool isStation = body.BodyType == CelestialBodyType.Station && body.StationInfo != null;
+
+            SetRowVisible(_stationKindRow, isStation);
+            SetRowVisible(_attachmentRow, isStation);
+
+            if (isStation)
+            {
+                if (_stationKindValue != null)
+                    _stationKindValue.text = UIStrings.GetStationKindName(body.StationInfo.Kind.ToString());
+                if (_attachmentValue != null)
+                    _attachmentValue.text = UIStrings.GetAttachmentModeName(body.AttachmentMode.ToString());
+            }
+
+            // SOI radius for non-ship bodies.
+            bool hasSOI = !isShip && body.SOIRadius.HasValue;
+            SetRowVisible(_soiRadiusRow, hasSOI);
+            if (hasSOI && _soiRadiusValue != null)
+            {
+                _soiRadiusValue.text = $"{body.SOIRadius.Value:F1} Mm";
+            }
         }
 
-        /// <summary>
-        /// Update state and destination labels — called each frame for live data.
-        /// </summary>
         private void UpdateShipDynamicFields(CelestialBody body)
         {
             var info = body.ShipInfo;
@@ -200,6 +246,20 @@ namespace SpaceSim.UI.Panels
             {
                 var dest = _registry?.GetCelestialBody(info.CurrentRoute.DestinationBodyId);
                 _destValue.text = dest != null ? dest.DisplayName : info.CurrentRoute.DestinationBodyId.ToString();
+            }
+
+            // Update dominant SOI body display.
+            if (_soiBodyValue != null)
+            {
+                if (info.CurrentSOIBodyId.IsValid)
+                {
+                    var soiBody = _registry?.GetCelestialBody(info.CurrentSOIBodyId);
+                    _soiBodyValue.text = soiBody != null ? soiBody.DisplayName : info.CurrentSOIBodyId.ToString();
+                }
+                else
+                {
+                    _soiBodyValue.text = UIStrings.Get("panel.details.none");
+                }
             }
         }
 

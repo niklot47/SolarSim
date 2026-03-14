@@ -1,0 +1,59 @@
+{
+  "create_folders": [
+    "Scripts/Simulation/SOI"
+  ],
+  "copy_files": [
+    {
+      "source": "CelestialBody.cs",
+      "target": "Scripts/World/Entities/CelestialBody.cs"
+    },
+    {
+      "source": "ShipInfo.cs",
+      "target": "Scripts/World/Entities/ShipInfo.cs"
+    },
+    {
+      "source": "CelestialBodyDefinition.cs",
+      "target": "Scripts/Data/Definitions/CelestialBodyDefinition.cs"
+    },
+    {
+      "source": "StarSystemBuilder.cs",
+      "target": "Scripts/Simulation/Core/StarSystemBuilder.cs"
+    },
+    {
+      "source": "SampleStarSystemFactory.cs",
+      "target": "Scripts/Simulation/Core/SampleStarSystemFactory.cs"
+    },
+    {
+      "source": "SOIResolver.cs",
+      "target": "Scripts/Simulation/SOI/SOIResolver.cs"
+    },
+    {
+      "source": "StarSystemLoader.cs",
+      "target": "Scripts/Rendering/Bootstrap/StarSystemLoader.cs"
+    },
+    {
+      "source": "OrbitalSandboxCoordinator.cs",
+      "target": "Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs"
+    },
+    {
+      "source": "SampleSystemAssetCreator.cs",
+      "target": "Scripts/Data/Editor/SampleSystemAssetCreator.cs"
+    },
+    {
+      "source": "UIStrings.cs",
+      "target": "Scripts/UI/Localization/UIStrings.cs"
+    },
+    {
+      "source": "ObjectDetailsPanelController.cs",
+      "target": "Scripts/UI/Panels/ObjectDetailsPanelController.cs"
+    },
+    {
+      "source": "OrbitalSandboxScreen.uxml",
+      "target": "UI/UXML/OrbitalSandboxScreen.uxml"
+    },
+    {
+      "source": "apply_updates.json",
+      "target": "apply_updates.json"
+    }
+  ]
+}

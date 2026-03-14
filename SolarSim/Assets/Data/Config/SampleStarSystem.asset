@@ -22,9 +22,10 @@ MonoBehaviour:
     BodyType: 0
     ParentKey: 
     AttachmentMode: 0
-    Radius: 5
+    Radius: 1
     IsSelectable: 1
     HasSurface: 0
+    SOIRadius: 1000
     SemiMajorAxis: 10
     Eccentricity: 0
     InclinationDeg: 0
@@ -43,10 +44,11 @@ MonoBehaviour:
     BodyType: 1
     ParentKey: sol
     AttachmentMode: 1
-    Radius: 0.15
+    Radius: 0.3
     IsSelectable: 1
     HasSurface: 1
-    SemiMajorAxis: 300
+    SOIRadius: 60
+    SemiMajorAxis: 150
     Eccentricity: 0
     InclinationDeg: 0
     LongitudeOfAscendingNodeDeg: 0
@@ -64,10 +66,11 @@ MonoBehaviour:
     BodyType: 1
     ParentKey: sol
     AttachmentMode: 1
-    Radius: 0.1
+    Radius: 0.2
     IsSelectable: 1
     HasSurface: 1
-    SemiMajorAxis: 550
+    SOIRadius: 40
+    SemiMajorAxis: 275
     Eccentricity: 0
     InclinationDeg: 0
     LongitudeOfAscendingNodeDeg: 0
@@ -79,43 +82,45 @@ MonoBehaviour:
     AxialTiltDeg: 0
     RotationPeriod: 25
     InitialRotationDeg: 0
+  - Key: venus
+    DisplayName: Venus
+    LocalizationKey: body.venus
+    BodyType: 1
+    ParentKey: sol
+    AttachmentMode: 1
+    Radius: 0.16
+    IsSelectable: 1
+    HasSurface: 0
+    SOIRadius: 30
+    SemiMajorAxis: 75
+    Eccentricity: 0
+    InclinationDeg: 0
+    LongitudeOfAscendingNodeDeg: 0
+    ArgumentOfPeriapsisDeg: 0
+    MeanAnomalyAtEpochDeg: 45
+    OrbitalPeriod: 80
+    EpochTime: 0
+    IsPrograde: 1
+    AxialTiltDeg: 0
+    RotationPeriod: 20
+    InitialRotationDeg: 0
   - Key: luna
     DisplayName: Luna
     LocalizationKey: body.luna
     BodyType: 2
     ParentKey: terra
     AttachmentMode: 1
-    Radius: 0.04
+    Radius: 0.08
     IsSelectable: 1
     HasSurface: 1
-    SemiMajorAxis: 50
+    SOIRadius: 8
+    SemiMajorAxis: 25
     Eccentricity: 0
     InclinationDeg: 0
     LongitudeOfAscendingNodeDeg: 0
     ArgumentOfPeriapsisDeg: 0
     MeanAnomalyAtEpochDeg: 45
     OrbitalPeriod: 20
-    EpochTime: 0
-    IsPrograde: 1
-    AxialTiltDeg: 0
-    RotationPeriod: 20
-    InitialRotationDeg: 0
-  - Key: venus
-    DisplayName: Venus
-    LocalizationKey: body.terra
-    BodyType: 1
-    ParentKey: sol
-    AttachmentMode: 1
-    Radius: 0.08
-    IsSelectable: 1
-    HasSurface: 0
-    SemiMajorAxis: 150
-    Eccentricity: 0
-    InclinationDeg: 0
-    LongitudeOfAscendingNodeDeg: 0
-    ArgumentOfPeriapsisDeg: 0
-    MeanAnomalyAtEpochDeg: 45
-    OrbitalPeriod: 10
     EpochTime: 0
     IsPrograde: 1
     AxialTiltDeg: 0
@@ -128,8 +133,8 @@ MonoBehaviour:
     Role: 0
     ShipClass: Corvette
     ParentBodyKey: terra
-    Radius: 0.15
-    OrbitalRadius: 3.5
+    Radius: 0.03
+    OrbitalRadius: 3
     OrbitalPeriod: 12
     StartAngleDeg: 0
   - Key: ship_cargo7
@@ -138,7 +143,7 @@ MonoBehaviour:
     Role: 1
     ShipClass: Freighter
     ParentBodyKey: terra
-    Radius: 0.12
+    Radius: 0.024
     OrbitalRadius: 4
     OrbitalPeriod: 15
     StartAngleDeg: 120
@@ -148,7 +153,32 @@ MonoBehaviour:
     Role: 2
     ShipClass: Interceptor
     ParentBodyKey: ares
-    Radius: 0.12
+    Radius: 0.024
     OrbitalRadius: 3
     OrbitalPeriod: 10
     StartAngleDeg: 200
+  Stations:
+  - Key: station_orbita1
+    DisplayName: "\u0421\u0442\u0430\u043D\u0446\u0438\u044F \xAB\u041E\u0440\u0431\u0438\u0442\u0430-1\xBB"
+    LocalizationKey: station.orbita1
+    Kind: 0
+    ParentBodyKey: terra
+    Radius: 0.06
+    OrbitalRadius: 8
+    OrbitalPeriod: 18
+    StartAngleDeg: 60
+    RotationPeriod: 40
+    SurfaceLatitudeDeg: 0
+    SurfaceLongitudeDeg: 0
+  - Key: station_terra1
+    DisplayName: "\u0411\u0430\u0437\u0430 \xAB\u0422\u0435\u0440\u0440\u0430-1\xBB"
+    LocalizationKey: station.terra1
+    Kind: 1
+    ParentBodyKey: terra
+    Radius: 0.04
+    OrbitalRadius: 2
+    OrbitalPeriod: 15
+    StartAngleDeg: 0
+    RotationPeriod: 0
+    SurfaceLatitudeDeg: 30
+    SurfaceLongitudeDeg: 45

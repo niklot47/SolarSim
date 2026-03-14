@@ -7,6 +7,7 @@ namespace SpaceSim.Simulation.Orbits
     /// <summary>
     /// Provides orbital position calculation.
     /// MVP: computes circular orbit in XZ plane.
+    /// Also supports surface position calculation for surface-attached objects.
     /// API is designed so future extension to elliptical/inclined orbits
     /// can replace the implementation without changing callers.
     /// </summary>
@@ -74,6 +75,33 @@ namespace SpaceSim.Simulation.Orbits
             ma = ma % TwoPi;
             if (ma < 0) ma += TwoPi;
             return ma;
+        }
+
+        /// <summary>
+        /// Calculate the position of a surface-attached object relative to its parent body.
+        /// Uses latitude/longitude on a sphere of given radius.
+        /// Position is fixed in the parent's local space (no rotation simulation for MVP).
+        /// Y axis is up; XZ plane is the equator.
+        /// </summary>
+        /// <param name="parentRadius">Parent body radius in world units.</param>
+        /// <param name="latitudeDeg">Latitude in degrees (-90 to 90).</param>
+        /// <param name="longitudeDeg">Longitude in degrees (-180 to 180).</param>
+        /// <param name="surfaceOffset">Small height offset above surface to avoid z-fighting.</param>
+        /// <returns>Parent-relative position as SimVec3.</returns>
+        public static SimVec3 CalculateSurfacePosition(
+            double parentRadius, double latitudeDeg, double longitudeDeg, double surfaceOffset = 0.0)
+        {
+            double r = parentRadius + surfaceOffset;
+            double latRad = latitudeDeg * DegToRad;
+            double lonRad = longitudeDeg * DegToRad;
+
+            // Spherical to cartesian: Y is up (pole axis), XZ is equator.
+            double cosLat = Math.Cos(latRad);
+            double x = r * cosLat * Math.Cos(lonRad);
+            double y = r * Math.Sin(latRad);
+            double z = r * cosLat * Math.Sin(lonRad);
+
+            return new SimVec3(x, y, z);
         }
     }
 }

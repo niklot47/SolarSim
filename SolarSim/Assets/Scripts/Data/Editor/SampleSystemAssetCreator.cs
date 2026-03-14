@@ -29,13 +29,14 @@ namespace SpaceSim.Data.Editor
                 BodyType = CelestialBodyType.Star,
                 ParentKey = "",
                 AttachmentMode = AttachmentMode.None,
-                Radius = 5.0,
+                Radius = 1.0,
                 IsSelectable = true,
                 HasSurface = false,
+                SOIRadius = 1000.0,
                 RotationPeriod = 600.0
             });
 
-            // Planet 1.
+            // Terra.
             asset.Bodies.Add(new CelestialBodyDefinition
             {
                 Key = "terra",
@@ -44,16 +45,17 @@ namespace SpaceSim.Data.Editor
                 BodyType = CelestialBodyType.Planet,
                 ParentKey = "sol",
                 AttachmentMode = AttachmentMode.Orbit,
-                Radius = 1.5,
+                Radius = 0.3,
                 IsSelectable = true,
                 HasSurface = true,
-                SemiMajorAxis = 30.0,
+                SOIRadius = 60.0,
+                SemiMajorAxis = 150.0,
                 OrbitalPeriod = 120.0,
                 MeanAnomalyAtEpochDeg = 0.0,
                 RotationPeriod = 30.0
             });
 
-            // Planet 2.
+            // Ares.
             asset.Bodies.Add(new CelestialBodyDefinition
             {
                 Key = "ares",
@@ -62,16 +64,36 @@ namespace SpaceSim.Data.Editor
                 BodyType = CelestialBodyType.Planet,
                 ParentKey = "sol",
                 AttachmentMode = AttachmentMode.Orbit,
-                Radius = 1.0,
+                Radius = 0.2,
                 IsSelectable = true,
                 HasSurface = true,
-                SemiMajorAxis = 55.0,
+                SOIRadius = 40.0,
+                SemiMajorAxis = 275.0,
                 OrbitalPeriod = 240.0,
                 MeanAnomalyAtEpochDeg = 90.0,
                 RotationPeriod = 25.0
             });
 
-            // Moon.
+            // Venus.
+            asset.Bodies.Add(new CelestialBodyDefinition
+            {
+                Key = "venus",
+                DisplayName = "Venus",
+                LocalizationKey = "body.venus",
+                BodyType = CelestialBodyType.Planet,
+                ParentKey = "sol",
+                AttachmentMode = AttachmentMode.Orbit,
+                Radius = 0.16,
+                IsSelectable = true,
+                HasSurface = false,
+                SOIRadius = 30.0,
+                SemiMajorAxis = 75.0,
+                OrbitalPeriod = 80.0,
+                MeanAnomalyAtEpochDeg = 45.0,
+                RotationPeriod = 20.0
+            });
+
+            // Luna.
             asset.Bodies.Add(new CelestialBodyDefinition
             {
                 Key = "luna",
@@ -80,10 +102,11 @@ namespace SpaceSim.Data.Editor
                 BodyType = CelestialBodyType.Moon,
                 ParentKey = "terra",
                 AttachmentMode = AttachmentMode.Orbit,
-                Radius = 0.4,
+                Radius = 0.08,
                 IsSelectable = true,
                 HasSurface = true,
-                SemiMajorAxis = 5.0,
+                SOIRadius = 8.0,
+                SemiMajorAxis = 25.0,
                 OrbitalPeriod = 20.0,
                 MeanAnomalyAtEpochDeg = 45.0,
                 RotationPeriod = 20.0
@@ -91,7 +114,6 @@ namespace SpaceSim.Data.Editor
 
             // --- Ships ---
 
-            // Player ship orbiting Terra.
             asset.Ships.Add(new ShipDefinition
             {
                 Key = "ship_aurora",
@@ -100,13 +122,12 @@ namespace SpaceSim.Data.Editor
                 Role = ShipRole.Player,
                 ShipClass = "Corvette",
                 ParentBodyKey = "terra",
-                Radius = 0.15,
-                OrbitalRadius = 3.5,
+                Radius = 0.03,
+                OrbitalRadius = 3.0,
                 OrbitalPeriod = 12.0,
                 StartAngleDeg = 0.0
             });
 
-            // NPC trader orbiting Terra.
             asset.Ships.Add(new ShipDefinition
             {
                 Key = "ship_cargo7",
@@ -115,13 +136,12 @@ namespace SpaceSim.Data.Editor
                 Role = ShipRole.Trader,
                 ShipClass = "Freighter",
                 ParentBodyKey = "terra",
-                Radius = 0.12,
+                Radius = 0.024,
                 OrbitalRadius = 4.0,
                 OrbitalPeriod = 15.0,
                 StartAngleDeg = 120.0
             });
 
-            // NPC patrol orbiting Ares.
             asset.Ships.Add(new ShipDefinition
             {
                 Key = "ship_strazh3",
@@ -130,10 +150,38 @@ namespace SpaceSim.Data.Editor
                 Role = ShipRole.Patrol,
                 ShipClass = "Interceptor",
                 ParentBodyKey = "ares",
-                Radius = 0.12,
+                Radius = 0.024,
                 OrbitalRadius = 3.0,
                 OrbitalPeriod = 10.0,
                 StartAngleDeg = 200.0
+            });
+
+            // --- Stations ---
+
+            asset.Stations.Add(new StationDefinition
+            {
+                Key = "station_orbita1",
+                DisplayName = "\u0421\u0442\u0430\u043d\u0446\u0438\u044f \u00ab\u041e\u0440\u0431\u0438\u0442\u0430-1\u00bb",
+                LocalizationKey = "station.orbita1",
+                Kind = StationKind.Orbital,
+                ParentBodyKey = "terra",
+                Radius = 0.06,
+                OrbitalRadius = 8.0,
+                OrbitalPeriod = 18.0,
+                StartAngleDeg = 60.0,
+                RotationPeriod = 40.0
+            });
+
+            asset.Stations.Add(new StationDefinition
+            {
+                Key = "station_terra1",
+                DisplayName = "\u0411\u0430\u0437\u0430 \u00ab\u0422\u0435\u0440\u0440\u0430-1\u00bb",
+                LocalizationKey = "station.terra1",
+                Kind = StationKind.Surface,
+                ParentBodyKey = "terra",
+                Radius = 0.04,
+                SurfaceLatitudeDeg = 30.0,
+                SurfaceLongitudeDeg = 45.0
             });
 
             // Save asset.

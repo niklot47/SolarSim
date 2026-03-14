@@ -1,3 +1,4 @@
+using SpaceSim.Shared.Identifiers;
 using SpaceSim.Shared.Math;
 
 namespace SpaceSim.World.Entities
@@ -31,6 +32,13 @@ namespace SpaceSim.World.Entities
         /// </summary>
         public SimVec3? OverrideWorldPosition { get; set; }
 
+        /// <summary>
+        /// The celestial body whose SOI currently dominates this ship.
+        /// Updated by ShipSOITracker each simulation tick.
+        /// EntityId.None if no SOI is resolved (e.g. deep interplanetary space).
+        /// </summary>
+        public EntityId CurrentSOIBodyId { get; set; }
+
         public ShipInfo()
         {
             Role = ShipRole.Civilian;
@@ -39,6 +47,7 @@ namespace SpaceSim.World.Entities
             State = ShipState.Orbiting;
             CurrentRoute = null;
             OverrideWorldPosition = null;
+            CurrentSOIBodyId = EntityId.None;
         }
 
         public ShipInfo(ShipRole role, string shipKey, string shipClass = "")
@@ -49,12 +58,14 @@ namespace SpaceSim.World.Entities
             State = ShipState.Orbiting;
             CurrentRoute = null;
             OverrideWorldPosition = null;
+            CurrentSOIBodyId = EntityId.None;
         }
 
         public override string ToString()
         {
             string routeStr = CurrentRoute != null ? $" route={CurrentRoute}" : "";
-            return $"ShipInfo[{Role} {State} key={ShipKey} class={ShipClass}{routeStr}]";
+            string soiStr = CurrentSOIBodyId.IsValid ? $" soi={CurrentSOIBodyId}" : "";
+            return $"ShipInfo[{Role} {State} key={ShipKey} class={ShipClass}{routeStr}{soiStr}]";
         }
     }
 }

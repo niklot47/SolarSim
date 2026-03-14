@@ -25,8 +25,12 @@ namespace SpaceSim.UI.Localization
             ["panel.details.ship_class"] = "\u041a\u043b\u0430\u0441\u0441",
             ["panel.details.state"] = "\u0421\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435",
             ["panel.details.destination"] = "\u041a\u0443\u0440\u0441",
+            ["panel.details.soi_body"] = "\u0417\u043e\u043d\u0430 \u0432\u043b\u0438\u044f\u043d\u0438\u044f",
             ["panel.details.none"] = "\u2014",
             ["panel.details.no_selection"] = "\u041d\u0438\u0447\u0435\u0433\u043e \u043d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d\u043e",
+            ["panel.details.station_kind"] = "\u0422\u0438\u043f \u0441\u0442\u0430\u043d\u0446\u0438\u0438",
+            ["panel.details.attachment"] = "\u041a\u0440\u0435\u043f\u043b\u0435\u043d\u0438\u0435",
+            ["panel.details.soi_radius"] = "\u0420\u0430\u0434\u0438\u0443\u0441 SOI",
 
             // Body type names.
             ["bodytype.Star"] = "\u0417\u0432\u0435\u0437\u0434\u0430",
@@ -36,6 +40,16 @@ namespace SpaceSim.UI.Localization
             ["bodytype.Station"] = "\u0421\u0442\u0430\u043d\u0446\u0438\u044f",
             ["bodytype.Ship"] = "\u041a\u043e\u0440\u0430\u0431\u043b\u044c",
             ["bodytype.SurfaceSite"] = "\u041d\u0430\u0437\u0435\u043c\u043d\u044b\u0439 \u043e\u0431\u044a\u0435\u043a\u0442",
+
+            // Station kind names.
+            ["stationkind.Orbital"] = "\u041e\u0440\u0431\u0438\u0442\u0430\u043b\u044c\u043d\u0430\u044f",
+            ["stationkind.Surface"] = "\u041d\u0430\u0437\u0435\u043c\u043d\u0430\u044f",
+
+            // Attachment mode names.
+            ["attachment.None"] = "\u041d\u0435\u0442",
+            ["attachment.Orbit"] = "\u041e\u0440\u0431\u0438\u0442\u0430",
+            ["attachment.Surface"] = "\u041f\u043e\u0432\u0435\u0440\u0445\u043d\u043e\u0441\u0442\u044c",
+            ["attachment.LocalSpace"] = "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0435",
 
             // Ship role names.
             ["shiprole.Player"] = "\u0418\u0433\u0440\u043e\u043a",
@@ -55,36 +69,34 @@ namespace SpaceSim.UI.Localization
             ["time.status.paused"] = "\u041f\u0430\u0443\u0437\u0430"
         };
 
-        /// <summary>
-        /// Get a localized string by key. Returns key itself if not found.
-        /// </summary>
         public static string Get(string key)
         {
             return _strings.TryGetValue(key, out var value) ? value : key;
         }
 
-        /// <summary>
-        /// Get a localized body type name.
-        /// </summary>
         public static string GetBodyTypeName(string bodyType)
         {
             return Get($"bodytype.{bodyType}");
         }
 
-        /// <summary>
-        /// Get a localized ship role name.
-        /// </summary>
         public static string GetShipRoleName(string role)
         {
             return Get($"shiprole.{role}");
         }
 
-        /// <summary>
-        /// Get a localized ship state name.
-        /// </summary>
         public static string GetShipStateName(string state)
         {
             return Get($"shipstate.{state}");
+        }
+
+        public static string GetStationKindName(string kind)
+        {
+            return Get($"stationkind.{kind}");
+        }
+
+        public static string GetAttachmentModeName(string mode)
+        {
+            return Get($"attachment.{mode}");
         }
     }
 }

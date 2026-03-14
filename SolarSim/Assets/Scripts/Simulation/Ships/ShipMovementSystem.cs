@@ -17,6 +17,10 @@ namespace SpaceSim.Simulation.Ships
         private const double DefaultOrbitRadius = 3.0;
         private const double DefaultOrbitPeriod = 12.0;
 
+        // Small orbit around stations for arriving ships.
+        private const double StationOrbitRadius = 0.5;
+        private const double StationOrbitPeriod = 8.0;
+
         public event Action<EntityId, EntityId> OnShipArrived;
 
         public ShipMovementSystem(WorldRegistry registry)
@@ -52,12 +56,25 @@ namespace SpaceSim.Simulation.Ships
             var destination = _registry.GetCelestialBody(destinationId);
             if (origin == null || destination == null) return false;
 
-            double destOrbitRadius = DefaultOrbitRadius;
-            double destOrbitPeriod = DefaultOrbitPeriod;
-            if (ship.Orbit != null)
+            // Determine orbit radius/period at destination.
+            // If destination is a station, use small station orbit.
+            double destOrbitRadius;
+            double destOrbitPeriod;
+
+            if (destination.BodyType == CelestialBodyType.Station)
+            {
+                destOrbitRadius = StationOrbitRadius;
+                destOrbitPeriod = StationOrbitPeriod;
+            }
+            else if (ship.Orbit != null)
             {
                 destOrbitRadius = ship.Orbit.SemiMajorAxis;
                 destOrbitPeriod = ship.Orbit.OrbitalPeriod;
+            }
+            else
+            {
+                destOrbitRadius = DefaultOrbitRadius;
+                destOrbitPeriod = DefaultOrbitPeriod;
             }
 
             EntityId localFrameBodyId;
@@ -122,7 +139,6 @@ namespace SpaceSim.Simulation.Ships
             if (origin.ParentId == destination.Id)
             {
                 // Only use local frame if destination is NOT a star.
-                // Star is effectively the global root — local frame adds nothing.
                 if (destination.BodyType != CelestialBodyType.Star)
                 {
                     localFrameBodyId = destination.Id;
@@ -141,8 +157,7 @@ namespace SpaceSim.Simulation.Ships
             }
 
             // Case 3: siblings sharing the same parent.
-            // Only use local frame if parent is NOT a star (e.g. two moons of the same planet).
-            // Planets orbiting the same star should use global frame.
+            // Only use local frame if parent is NOT a star.
             if (origin.ParentId.IsValid && origin.ParentId == destination.ParentId)
             {
                 var parent = _registry.GetCelestialBody(origin.ParentId);
@@ -150,6 +165,47 @@ namespace SpaceSim.Simulation.Ships
                 {
                     localFrameBodyId = origin.ParentId;
                     return RouteFrame.LocalParent;
+                }
+            }
+
+            // Case 4: destination is a station — check if station's parent
+            // creates a local-frame relationship with the ship's origin.
+            if (destination.BodyType == CelestialBodyType.Station && destination.ParentId.IsValid)
+            {
+                var stationParent = _registry.GetCelestialBody(destination.ParentId);
+                if (stationParent != null)
+                {
+                    // If ship's origin is the station's parent body (or vice versa),
+                    // use the station's parent as local frame.
+                    if (origin.Id == destination.ParentId && origin.BodyType != CelestialBodyType.Star)
+                    {
+                        localFrameBodyId = origin.Id;
+                        return RouteFrame.LocalParent;
+                    }
+                    if (origin.ParentId == destination.ParentId && stationParent.BodyType != CelestialBodyType.Star)
+                    {
+                        localFrameBodyId = destination.ParentId;
+                        return RouteFrame.LocalParent;
+                    }
+                }
+            }
+
+            // Case 5: origin is a station — similar logic.
+            if (origin.BodyType == CelestialBodyType.Station && origin.ParentId.IsValid)
+            {
+                var stationParent = _registry.GetCelestialBody(origin.ParentId);
+                if (stationParent != null)
+                {
+                    if (destination.Id == origin.ParentId && destination.BodyType != CelestialBodyType.Star)
+                    {
+                        localFrameBodyId = destination.Id;
+                        return RouteFrame.LocalParent;
+                    }
+                    if (origin.ParentId == destination.ParentId && stationParent.BodyType != CelestialBodyType.Star)
+                    {
+                        localFrameBodyId = origin.ParentId;
+                        return RouteFrame.LocalParent;
+                    }
                 }
             }
 
@@ -289,6 +345,7 @@ namespace SpaceSim.Simulation.Ships
                 return;
             }
 
+            // Ship enters orbit around the destination (including stations — no docking).
             ship.ParentId = destination.Id;
             destination.AddChildId(ship.Id);
             ship.AttachmentMode = AttachmentMode.Orbit;

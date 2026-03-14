@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using SpaceSim.Shared.Identifiers;
 using SpaceSim.Shared.Math;
-using SpaceSim.Simulation.Orbits;
+using SpaceSim.Simulation.Core;
 using SpaceSim.Simulation.Time;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
@@ -25,6 +25,7 @@ namespace SpaceSim.Rendering.Orbits
         private WorldRegistry _registry;
         private StarSystem _system;
         private SimulationClock _clock;
+        private WorldPositionResolver _positionResolver;
         private Camera _mainCamera;
 
         private readonly Dictionary<EntityId, Planets.CelestialBodyView> _views =
@@ -34,11 +35,13 @@ namespace SpaceSim.Rendering.Orbits
 
         private const int OrbitLineSegments = 64;
 
-        public void Initialize(WorldRegistry registry, StarSystem system, SimulationClock clock)
+        public void Initialize(WorldRegistry registry, StarSystem system, SimulationClock clock,
+            WorldPositionResolver positionResolver)
         {
             _registry = registry;
             _system = system;
             _clock = clock;
+            _positionResolver = positionResolver;
         }
 
         public void BuildSceneObjects()
@@ -49,6 +52,7 @@ namespace SpaceSim.Rendering.Orbits
                 var body = _registry.GetCelestialBody(bodyId);
                 if (body == null) continue;
                 CreateBodyView(body);
+                // Orbit lines for orbital bodies only (not surface stations).
                 if (body.Orbit != null && body.AttachmentMode == AttachmentMode.Orbit)
                     CreateOrbitLine(body);
             }
@@ -64,72 +68,94 @@ namespace SpaceSim.Rendering.Orbits
 
         /// <summary>
         /// Resolve absolute world position for any body at given simulation time.
-        /// Public so ShipMovementSystem can use it via delegate.
+        /// Thin passthrough to the simulation-side WorldPositionResolver.
+        /// Public so coordinator can provide it as a delegate to ship systems.
         /// </summary>
         public SimVec3 ResolveWorldPosition(EntityId bodyId, double simTime)
         {
-            var body = _registry.GetCelestialBody(bodyId);
-            if (body == null) return SimVec3.Zero;
-            return CalculateWorldPosition(body, simTime);
+            if (_positionResolver == null) return SimVec3.Zero;
+            return _positionResolver.Resolve(bodyId, simTime);
         }
 
         private void Update()
         {
-            if (_registry == null || _system == null || _clock == null) return;
+            if (_registry == null || _system == null || _clock == null || _positionResolver == null) return;
             double simTime = _clock.CurrentTime;
+
             foreach (var bodyId in _system.AllBodyIds)
             {
                 var body = _registry.GetCelestialBody(bodyId);
                 if (body == null) continue;
                 if (!_views.TryGetValue(bodyId, out var view)) continue;
 
-                // Check if this is a travelling ship with a position override.
-                if (body.BodyType == CelestialBodyType.Ship
-                    && body.ShipInfo != null
-                    && body.ShipInfo.OverrideWorldPosition.HasValue)
-                {
-                    // Use override position from ShipMovementSystem.
-                    view.SetWorldPosition(WorldToScene(body.ShipInfo.OverrideWorldPosition.Value));
+                // Resolve world position via the simulation-side resolver.
+                SimVec3 worldPos = _positionResolver.Resolve(body, simTime);
+                view.SetWorldPosition(WorldToScene(worldPos));
 
-                    // Hide orbit line while travelling.
-                    SetOrbitLineVisible(bodyId, false);
-                }
-                else
+                // Ship orbit line visibility management.
+                if (body.BodyType == CelestialBodyType.Ship && body.ShipInfo != null)
                 {
-                    // Standard orbital position.
-                    SimVec3 worldPos = CalculateWorldPosition(body, simTime);
-                    view.SetWorldPosition(WorldToScene(worldPos));
-                    UpdateOrbitLineCenter(body, simTime);
-
-                    // Re-create orbit line if ship arrived and has orbit again but no line yet.
-                    if (body.BodyType == CelestialBodyType.Ship
-                        && body.Orbit != null
-                        && body.AttachmentMode == AttachmentMode.Orbit)
+                    if (body.ShipInfo.OverrideWorldPosition.HasValue)
                     {
+                        // Hide orbit line while travelling.
+                        SetOrbitLineVisible(bodyId, false);
+                    }
+                    else if (body.Orbit != null && body.AttachmentMode == AttachmentMode.Orbit)
+                    {
+                        // Ship has orbit after arrival — ensure orbit line exists and show it.
                         EnsureOrbitLine(body);
                         SetOrbitLineVisible(bodyId, true);
                     }
                 }
+
+                // Update orbit line center to parent position.
+                UpdateOrbitLineCenter(body, simTime);
             }
             UpdateOrbitLineThickness();
         }
 
-        private SimVec3 CalculateWorldPosition(CelestialBody body, double simTime)
+        private void UpdateOrbitLineCenter(CelestialBody body, double simTime)
         {
-            if (body.Orbit == null || !body.ParentId.IsValid) return SimVec3.Zero;
-            var parent = _registry.GetCelestialBody(body.ParentId);
-            SimVec3 parentPos = SimVec3.Zero;
-            if (parent != null) parentPos = CalculateWorldPosition(parent, simTime);
-            return OrbitalPositionCalculator.CalculateAbsolutePosition(body.Orbit, simTime, parentPos);
+            if (!_orbitLines.TryGetValue(body.Id, out var lr)) return;
+            if (body.Orbit == null || !body.ParentId.IsValid) return;
+
+            // Move the orbit line to the parent's scene position.
+            SimVec3 parentWorldPos = _positionResolver.Resolve(body.ParentId, simTime);
+            lr.transform.position = WorldToScene(parentWorldPos);
         }
+
+        // ---------------------------------------------------------------
+        // Scene object creation
+        // ---------------------------------------------------------------
 
         private void CreateBodyView(CelestialBody body)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            // Use cube for stations, sphere for everything else.
+            GameObject go;
+            if (body.BodyType == CelestialBodyType.Station)
+            {
+                go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            }
+            else
+            {
+                go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            }
+
             var collider = go.GetComponent<Collider>();
             if (collider != null) Destroy(collider);
-            var sc = go.AddComponent<SphereCollider>();
-            sc.isTrigger = true;
+
+            // Add appropriate trigger collider.
+            if (body.BodyType == CelestialBodyType.Station)
+            {
+                var bc = go.AddComponent<BoxCollider>();
+                bc.isTrigger = true;
+            }
+            else
+            {
+                var sc = go.AddComponent<SphereCollider>();
+                sc.isTrigger = true;
+            }
+
             var rend = go.GetComponent<MeshRenderer>();
             if (defaultBodyMaterial != null) rend.material = new Material(defaultBodyMaterial);
             var view = go.AddComponent<Planets.CelestialBodyView>();
@@ -142,14 +168,13 @@ namespace SpaceSim.Rendering.Orbits
         private void CreateOrbitLine(CelestialBody body)
         {
             if (body.Orbit == null) return;
-            if (_orbitLines.ContainsKey(body.Id)) return; // Already exists.
+            if (_orbitLines.ContainsKey(body.Id)) return;
 
             var lineGo = new GameObject($"OrbitLine_{body.BodyType}_{body.Id}");
             lineGo.transform.SetParent(transform);
             float baseWidth = scaleConfig != null ? scaleConfig.OrbitLineBaseWidth : 0.05f;
             var lr = lineGo.AddComponent<LineRenderer>();
 
-            // Use local space so that transform.position acts as the orbit center.
             lr.useWorldSpace = false;
             lr.loop = true;
             lr.positionCount = OrbitLineSegments;
@@ -162,7 +187,6 @@ namespace SpaceSim.Rendering.Orbits
                 ? scaleConfig.WorldToSceneDistance(body.Orbit.SemiMajorAxis)
                 : (float)body.Orbit.SemiMajorAxis;
 
-            // Positions are in local space — circle centered at (0,0,0).
             for (int i = 0; i < OrbitLineSegments; i++)
             {
                 float angle = (float)i / OrbitLineSegments * Mathf.PI * 2f;
@@ -171,15 +195,10 @@ namespace SpaceSim.Rendering.Orbits
             _orbitLines[body.Id] = lr;
         }
 
-        /// <summary>
-        /// Ensure orbit line exists for a body. Creates one if missing.
-        /// Used when a ship arrives at a new destination and needs a fresh orbit line.
-        /// </summary>
         private void EnsureOrbitLine(CelestialBody body)
         {
             if (_orbitLines.ContainsKey(body.Id))
             {
-                // Orbit line exists but may have wrong radius — rebuild.
                 var existingLr = _orbitLines[body.Id];
                 if (existingLr != null && body.Orbit != null)
                 {
@@ -196,7 +215,6 @@ namespace SpaceSim.Rendering.Orbits
                 }
                 return;
             }
-
             CreateOrbitLine(body);
         }
 
@@ -206,18 +224,6 @@ namespace SpaceSim.Rendering.Orbits
             {
                 lr.enabled = visible;
             }
-        }
-
-        private void UpdateOrbitLineCenter(CelestialBody body, double simTime)
-        {
-            if (!_orbitLines.TryGetValue(body.Id, out var lr)) return;
-            if (body.Orbit == null || !body.ParentId.IsValid) return;
-            var parent = _registry.GetCelestialBody(body.ParentId);
-            if (parent == null) return;
-
-            // Move the orbit line GameObject to the parent's scene position.
-            // Since useWorldSpace=false, this centers the local-space circle on the parent.
-            lr.transform.position = WorldToScene(CalculateWorldPosition(parent, simTime));
         }
 
         private void UpdateOrbitLineThickness()

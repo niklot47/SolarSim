@@ -11,6 +11,9 @@ namespace SpaceSim.Rendering.Planets
         public EntityId BoundEntityId { get; private set; } = EntityId.None;
         public CelestialBodyType BodyType { get; private set; }
 
+        /// <summary>Visual scale reduction factor for station cubes.</summary>
+        private const float StationScaleFactor = 1.0f / 3.0f;
+
         private MeshRenderer _meshRenderer;
 
         public void Bind(CelestialBody body, SceneScaleConfig scaleConfig)
@@ -18,8 +21,8 @@ namespace SpaceSim.Rendering.Planets
             BoundEntityId = body.Id;
             BodyType = body.BodyType;
             gameObject.name = $"Body_{body.BodyType}_{body.Id}";
-            ApplyScale(body.Radius, scaleConfig);
-            ApplyColor(body.BodyType, body.ShipInfo);
+            ApplyScale(body, scaleConfig);
+            ApplyColor(body);
         }
 
         public void SetWorldPosition(Vector3 scenePosition)
@@ -40,27 +43,32 @@ namespace SpaceSim.Rendering.Planets
 
         public void SetRepresentationMode(int mode) { }
 
-        private void ApplyScale(double worldRadius, SceneScaleConfig scaleConfig)
+        private void ApplyScale(CelestialBody body, SceneScaleConfig scaleConfig)
         {
             float diameter;
             if (scaleConfig != null)
-                diameter = scaleConfig.WorldToSceneDiameter(worldRadius);
+                diameter = scaleConfig.WorldToSceneDiameter(body.Radius);
             else
-                diameter = (float)(worldRadius * 2.0);
+                diameter = (float)(body.Radius * 2.0);
+
+            // Stations are rendered 3x smaller for visual clarity.
+            if (body.BodyType == CelestialBodyType.Station)
+                diameter *= StationScaleFactor;
+
             transform.localScale = new Vector3(diameter, diameter, diameter);
         }
 
-        private void ApplyColor(CelestialBodyType bodyType, ShipInfo shipInfo)
+        private void ApplyColor(CelestialBody body)
         {
             _meshRenderer = GetComponentInChildren<MeshRenderer>();
             if (_meshRenderer == null) return;
 
             Color color;
 
-            if (bodyType == CelestialBodyType.Ship && shipInfo != null)
+            if (body.BodyType == CelestialBodyType.Ship && body.ShipInfo != null)
             {
                 // Different colors per ship role for easy identification.
-                color = shipInfo.Role switch
+                color = body.ShipInfo.Role switch
                 {
                     ShipRole.Player => new Color(0.2f, 1.0f, 0.4f),    // Bright green.
                     ShipRole.Trader => new Color(0.9f, 0.7f, 0.2f),    // Gold/yellow.
@@ -69,9 +77,19 @@ namespace SpaceSim.Rendering.Planets
                     _ => new Color(0.6f, 0.8f, 0.9f)
                 };
             }
+            else if (body.BodyType == CelestialBodyType.Station && body.StationInfo != null)
+            {
+                // Station colors: orbital = cyan/white, surface = warm orange.
+                color = body.StationInfo.Kind switch
+                {
+                    StationKind.Orbital => new Color(0.5f, 0.9f, 1.0f),   // Cyan-white.
+                    StationKind.Surface => new Color(0.9f, 0.6f, 0.3f),   // Warm orange.
+                    _ => new Color(0.8f, 0.8f, 0.9f)
+                };
+            }
             else
             {
-                color = bodyType switch
+                color = body.BodyType switch
                 {
                     CelestialBodyType.Star => new Color(1f, 0.9f, 0.3f),
                     CelestialBodyType.Planet => new Color(0.3f, 0.5f, 0.8f),
@@ -86,10 +104,12 @@ namespace SpaceSim.Rendering.Planets
             _meshRenderer.material.color = color;
 
             // Emission for stars and player ships.
-            if (bodyType == CelestialBodyType.Star)
+            if (body.BodyType == CelestialBodyType.Star)
                 _meshRenderer.material.SetColor("_EmissionColor", color * 0.5f);
-            else if (bodyType == CelestialBodyType.Ship && shipInfo?.Role == ShipRole.Player)
+            else if (body.BodyType == CelestialBodyType.Ship && body.ShipInfo?.Role == ShipRole.Player)
                 _meshRenderer.material.SetColor("_EmissionColor", color * 0.15f);
+            else if (body.BodyType == CelestialBodyType.Station)
+                _meshRenderer.material.SetColor("_EmissionColor", color * 0.1f);
         }
     }
 }

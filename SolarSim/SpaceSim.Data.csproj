@@ -52,6 +52,7 @@
     <Compile Include="Assets\Scripts\Data\Definitions\ShipDefinition.cs" />
     <Compile Include="Assets\Scripts\Data\Config\SceneScaleConfig.cs" />
     <Compile Include="Assets\Scripts\Data\Editor\SampleSystemAssetCreator.cs" />
+    <Compile Include="Assets\Scripts\Data\Definitions\StationDefinition.cs" />
     <Compile Include="Assets\Scripts\Data\Definitions\StarSystemDefinition.cs" />
     <Compile Include="Assets\Scripts\Data\Definitions\CelestialBodyDefinition.cs" />
   </ItemGroup>

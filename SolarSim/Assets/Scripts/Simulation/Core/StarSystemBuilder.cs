@@ -22,6 +22,9 @@ namespace SpaceSim.Simulation.Core
         public bool IsSelectable;
         public bool HasSurface;
 
+        /// <summary>SOI radius in world units. 0 or negative = no SOI.</summary>
+        public double SOIRadius;
+
         // Orbit.
         public double SemiMajorAxis;
         public double Eccentricity;
@@ -57,6 +60,29 @@ namespace SpaceSim.Simulation.Core
     }
 
     /// <summary>
+    /// Input data for building one station. Pure C#.
+    /// </summary>
+    public class StationBuildData
+    {
+        public string Key;
+        public string DisplayName;
+        public string LocalizationKey;
+        public int Kind;            // Cast from StationKind enum.
+        public string ParentBodyKey;
+        public double Radius;
+
+        // Orbital station fields.
+        public double OrbitalRadius;
+        public double OrbitalPeriod;
+        public double StartAngleDeg;
+        public double RotationPeriod;
+
+        // Surface station fields.
+        public double SurfaceLatitudeDeg;
+        public double SurfaceLongitudeDeg;
+    }
+
+    /// <summary>
     /// Input data for building a star system. Pure C#.
     /// </summary>
     public class StarSystemBuildData
@@ -66,13 +92,14 @@ namespace SpaceSim.Simulation.Core
         public string LocalizationKey;
         public List<CelestialBodyBuildData> Bodies = new List<CelestialBodyBuildData>();
         public List<ShipBuildData> Ships = new List<ShipBuildData>();
+        public List<StationBuildData> Stations = new List<StationBuildData>();
     }
 
     /// <summary>
     /// Builds runtime StarSystem + CelestialBody entities from build data.
     /// Pure C# — no UnityEngine dependency.
     /// Resolves parent-child hierarchy by Key/ParentKey matching.
-    /// Also builds ships and attaches them to parent bodies.
+    /// Also builds ships and stations, attaching them to parent bodies.
     /// </summary>
     public static class StarSystemBuilder
     {
@@ -98,6 +125,7 @@ namespace SpaceSim.Simulation.Core
                     HasSurface = bd.HasSurface,
                     LocalizationKeyName = bd.LocalizationKey ?? "",
                     AttachmentMode = (AttachmentMode)bd.AttachmentMode,
+                    SOIRadius = bd.SOIRadius > 0.0 ? bd.SOIRadius : (double?)null,
                     Spin = new SpinDefinition
                     {
                         AxialTiltDeg = bd.AxialTiltDeg,
@@ -134,7 +162,7 @@ namespace SpaceSim.Simulation.Core
                     continue;
 
                 if (!keyToId.TryGetValue(bd.ParentKey, out var parentId))
-                    continue; // Parent not found — skip silently.
+                    continue;
 
                 if (!keyToBody.TryGetValue(bd.Key, out var child))
                     continue;
@@ -166,6 +194,15 @@ namespace SpaceSim.Simulation.Core
                 }
             }
 
+            // Phase 5: build stations.
+            if (data.Stations != null)
+            {
+                foreach (var std in data.Stations)
+                {
+                    BuildStation(std, keyToId, registry, system);
+                }
+            }
+
             return system;
         }
 
@@ -175,7 +212,6 @@ namespace SpaceSim.Simulation.Core
             WorldRegistry registry,
             StarSystem system)
         {
-            // Resolve parent body.
             EntityId parentId = EntityId.None;
             if (!string.IsNullOrEmpty(sd.ParentBodyKey) && keyToId.TryGetValue(sd.ParentBodyKey, out var pid))
             {
@@ -200,7 +236,6 @@ namespace SpaceSim.Simulation.Core
                     sd.ShipClass ?? "")
             };
 
-            // Wire parent-child.
             if (parentId.IsValid)
             {
                 var parentBody = registry.GetCelestialBody(parentId);
@@ -209,6 +244,50 @@ namespace SpaceSim.Simulation.Core
 
             registry.Add(ship);
             system.AddBody(ship.Id, isRoot: false);
+        }
+
+        private static void BuildStation(
+            StationBuildData std,
+            Dictionary<string, EntityId> keyToId,
+            WorldRegistry registry,
+            StarSystem system)
+        {
+            EntityId parentId = EntityId.None;
+            if (!string.IsNullOrEmpty(std.ParentBodyKey) && keyToId.TryGetValue(std.ParentBodyKey, out var pid))
+            {
+                parentId = pid;
+            }
+
+            var kind = (StationKind)std.Kind;
+            bool isOrbital = kind == StationKind.Orbital;
+
+            var station = new CelestialBody(std.DisplayName, CelestialBodyType.Station)
+            {
+                Radius = std.Radius,
+                IsSelectable = true,
+                HasSurface = false,
+                LocalizationKeyName = std.LocalizationKey ?? "",
+                ParentId = parentId,
+                AttachmentMode = isOrbital ? AttachmentMode.Orbit : AttachmentMode.Surface,
+                Orbit = isOrbital && parentId.IsValid
+                    ? OrbitDefinition.Circular(std.OrbitalRadius, std.OrbitalPeriod, std.StartAngleDeg)
+                    : null,
+                Spin = isOrbital && std.RotationPeriod > 0.0
+                    ? SpinDefinition.Simple(std.RotationPeriod)
+                    : new SpinDefinition(),
+                StationInfo = new StationInfo(kind, std.SurfaceLatitudeDeg, std.SurfaceLongitudeDeg)
+            };
+
+            if (parentId.IsValid)
+            {
+                var parentBody = registry.GetCelestialBody(parentId);
+                parentBody?.AddChildId(station.Id);
+            }
+
+            keyToId[std.Key] = station.Id;
+
+            registry.Add(station);
+            system.AddBody(station.Id, isRoot: false);
         }
     }
 }

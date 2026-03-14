@@ -15,5 +15,5 @@ MonoBehaviour:
   DistanceScale: 1
   BodyRadiusScale: 1
   MinBodyDiameter: 0.3
-  OrbitLineBaseWidth: 0.05
-  OrbitLineMaxWidthMultiplier: 5
+  OrbitLineBaseWidth: 0.01
+  OrbitLineMaxWidthMultiplier: 7

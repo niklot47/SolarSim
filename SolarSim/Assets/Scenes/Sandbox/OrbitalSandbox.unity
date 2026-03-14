@@ -453,8 +453,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Orbits.OrbitalMapRenderer
   defaultBodyMaterial: {fileID: 0}
   scaleConfig: {fileID: 11400000, guid: 6d4c6e166aa99794c9918fbfa574d086, type: 2}
-  nearDistance: 20
-  farDistance: 150
+  nearDistance: 1
+  farDistance: 200
 --- !u!1 &1162873945
 GameObject:
   m_ObjectHideFlags: 0

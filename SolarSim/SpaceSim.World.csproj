@@ -51,6 +51,7 @@
   <ItemGroup>
     <Compile Include="Assets\Scripts\World\Entities\CelestialBodyType.cs" />
     <Compile Include="Assets\Scripts\World\Entities\AttachmentMode.cs" />
+    <Compile Include="Assets\Scripts\World\Entities\StationInfo.cs" />
     <Compile Include="Assets\Scripts\World\Entities\StarSystem.cs" />
     <Compile Include="Assets\Scripts\World\Entities\ShipRole.cs" />
     <Compile Include="Assets\Scripts\World\Systems\WorldRegistry.cs" />

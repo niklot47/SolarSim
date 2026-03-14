@@ -8,6 +8,7 @@ namespace SpaceSim.Data.Definitions
     /// Create via: Create -> SpaceSim -> Star System Definition.
     /// Bodies are embedded as a flat list; parent-child resolved by Key/ParentKey.
     /// Ships are a separate list resolved by ParentBodyKey at build time.
+    /// Stations are a separate list resolved by ParentBodyKey at build time.
     /// </summary>
     [CreateAssetMenu(fileName = "NewStarSystem", menuName = "SpaceSim/Star System Definition")]
     public class StarSystemDefinition : ScriptableObject
@@ -29,5 +30,9 @@ namespace SpaceSim.Data.Definitions
         [Header("Ships")]
         [Tooltip("Ships present in this system. Placed by referencing a parent body key.")]
         public List<ShipDefinition> Ships = new List<ShipDefinition>();
+
+        [Header("Stations")]
+        [Tooltip("Stations present in this system. Placed by referencing a parent body key.")]
+        public List<StationDefinition> Stations = new List<StationDefinition>();
     }
 }
