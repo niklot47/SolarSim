@@ -152,8 +152,9 @@ MonoBehaviour:
   cameraController: {fileID: 137804995}
   uiDocument: {fileID: 1837812490}
   starSystemDefinition: {fileID: 11400000, guid: 152fe9861eff72f429025f0ad47ecf5b, type: 2}
-  sampleRouteStartDelay: 2
-  sampleRouteDuration: 60
+  npcTravelSpeed: 10
+  npcMinTravelDuration: 3
+  npcIdleDelay: 3
 --- !u!4 &81263134
 Transform:
   m_ObjectHideFlags: 0
@@ -275,8 +276,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 70dbde4a2449a3c41a30fb9fcb1cf8f2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Cameras.OrbitalCameraController
-  zoomSpeed: 10
-  minDistance: 5
+  zoomSpeed: 50
+  minDistance: 1
   maxDistance: 200
   panSpeed: 0.5
   rotateSpeed: 2

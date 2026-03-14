@@ -5,32 +5,18 @@ using SpaceSim.Shared.Math;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
 using SpaceSim.World.ValueTypes;
+using SpaceSim.Simulation.Orbits;
 
 namespace SpaceSim.Simulation.Ships
 {
-    /// <summary>
-    /// Simulation system responsible for updating ship movement.
-    /// Pure C# — no UnityEngine dependency.
-    ///
-    /// Call Update() each frame with the current simulation time.
-    ///
-    /// Logic:
-    /// - Orbiting ships: no action (handled by orbital system).
-    /// - Travelling ships: interpolate position between origin and destination.
-    ///   When travel completes, re-parent the ship to the destination body
-    ///   and switch back to Orbiting state.
-    /// </summary>
     public class ShipMovementSystem
     {
         private readonly WorldRegistry _registry;
-
-        // Cached list of tracked ship ids to avoid allocation per frame.
         private readonly List<EntityId> _trackedShips = new List<EntityId>();
 
-        /// <summary>
-        /// Raised when a ship completes travel and arrives at destination.
-        /// Args: ship entity id, destination body id.
-        /// </summary>
+        private const double DefaultOrbitRadius = 3.0;
+        private const double DefaultOrbitPeriod = 12.0;
+
         public event Action<EntityId, EntityId> OnShipArrived;
 
         public ShipMovementSystem(WorldRegistry registry)
@@ -38,38 +24,25 @@ namespace SpaceSim.Simulation.Ships
             _registry = registry;
         }
 
-        /// <summary>
-        /// Register a ship to be tracked by this system.
-        /// Only tracked ships get movement updates.
-        /// </summary>
         public void TrackShip(EntityId shipId)
         {
             if (!_trackedShips.Contains(shipId))
                 _trackedShips.Add(shipId);
         }
 
-        /// <summary>
-        /// Remove a ship from tracking.
-        /// </summary>
         public void UntrackShip(EntityId shipId)
         {
             _trackedShips.Remove(shipId);
         }
 
-        /// <summary>
-        /// Number of ships being tracked.
-        /// </summary>
         public int TrackedCount => _trackedShips.Count;
 
-        /// <summary>
-        /// Begin travel for a ship from its current parent to a destination body.
-        /// </summary>
-        /// <param name="shipId">Ship entity id.</param>
-        /// <param name="destinationId">Target body entity id.</param>
-        /// <param name="currentSimTime">Current simulation time (departure time).</param>
-        /// <param name="travelDuration">Travel duration in simulation seconds.</param>
-        /// <returns>True if the route was started successfully.</returns>
-        public bool StartRoute(EntityId shipId, EntityId destinationId, double currentSimTime, double travelDuration)
+        public bool StartRoute(
+            EntityId shipId,
+            EntityId destinationId,
+            double currentSimTime,
+            double travelDuration,
+            Func<EntityId, double, SimVec3> positionResolver = null)
         {
             var ship = _registry.GetCelestialBody(shipId);
             if (ship == null || ship.ShipInfo == null) return false;
@@ -79,35 +52,50 @@ namespace SpaceSim.Simulation.Ships
             var destination = _registry.GetCelestialBody(destinationId);
             if (origin == null || destination == null) return false;
 
-            // Create route.
-            ship.ShipInfo.CurrentRoute = new ShipRoute(
-                origin.Id, destination.Id, currentSimTime, travelDuration);
-            ship.ShipInfo.State = ShipState.Travelling;
+            double destOrbitRadius = DefaultOrbitRadius;
+            double destOrbitPeriod = DefaultOrbitPeriod;
+            if (ship.Orbit != null)
+            {
+                destOrbitRadius = ship.Orbit.SemiMajorAxis;
+                destOrbitPeriod = ship.Orbit.OrbitalPeriod;
+            }
 
-            // Detach from parent's children list (ship is now "in transit").
+            EntityId localFrameBodyId;
+            RouteFrame frame = DetermineRouteFrame(origin, destination, out localFrameBodyId);
+
+            ShipRoute route;
+            if (frame == RouteFrame.LocalParent && positionResolver != null)
+            {
+                route = BuildLocalRoute(ship, origin, destination, localFrameBodyId,
+                    currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod, positionResolver);
+            }
+            else
+            {
+                route = BuildGlobalRoute(ship, origin, destination,
+                    currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod, positionResolver);
+            }
+
+            ship.ShipInfo.CurrentRoute = route;
+            ship.ShipInfo.State = ShipState.Travelling;
+            ship.ShipInfo.OverrideWorldPosition = route.StartWorldPosition;
+
             origin.RemoveChildId(shipId);
             ship.AttachmentMode = AttachmentMode.None;
-
-            // Hide orbit line by clearing orbit (renderer checks Orbit != null).
             ship.Orbit = null;
 
             TrackShip(shipId);
             return true;
         }
 
-        /// <summary>
-        /// Update all tracked ships. Called once per simulation tick.
-        /// </summary>
-        /// <param name="currentSimTime">Current simulation time.</param>
-        /// <param name="positionResolver">
-        /// Delegate that resolves the absolute world position of a body at given time.
-        /// Provided by the rendering/coordination layer.
-        /// </param>
+        public bool StartRoute(EntityId shipId, EntityId destinationId, double currentSimTime, double travelDuration)
+        {
+            return StartRoute(shipId, destinationId, currentSimTime, travelDuration, null);
+        }
+
         public void Update(double currentSimTime, Func<EntityId, double, SimVec3> positionResolver)
         {
             if (positionResolver == null) return;
 
-            // Iterate backwards to allow safe removal during iteration.
             for (int i = _trackedShips.Count - 1; i >= 0; i--)
             {
                 var shipId = _trackedShips[i];
@@ -117,10 +105,146 @@ namespace SpaceSim.Simulation.Ships
                     _trackedShips.RemoveAt(i);
                     continue;
                 }
-
                 UpdateShip(ship, currentSimTime, positionResolver);
             }
         }
+
+        // ---------------------------------------------------------------
+        // Route frame determination
+        // ---------------------------------------------------------------
+
+        private RouteFrame DetermineRouteFrame(
+            CelestialBody origin, CelestialBody destination, out EntityId localFrameBodyId)
+        {
+            localFrameBodyId = EntityId.None;
+
+            // Case 1: destination is parent of origin (e.g. Moon -> Planet).
+            if (origin.ParentId == destination.Id)
+            {
+                // Only use local frame if destination is NOT a star.
+                // Star is effectively the global root — local frame adds nothing.
+                if (destination.BodyType != CelestialBodyType.Star)
+                {
+                    localFrameBodyId = destination.Id;
+                    return RouteFrame.LocalParent;
+                }
+            }
+
+            // Case 2: origin is parent of destination (e.g. Planet -> Moon).
+            if (destination.ParentId == origin.Id)
+            {
+                if (origin.BodyType != CelestialBodyType.Star)
+                {
+                    localFrameBodyId = origin.Id;
+                    return RouteFrame.LocalParent;
+                }
+            }
+
+            // Case 3: siblings sharing the same parent.
+            // Only use local frame if parent is NOT a star (e.g. two moons of the same planet).
+            // Planets orbiting the same star should use global frame.
+            if (origin.ParentId.IsValid && origin.ParentId == destination.ParentId)
+            {
+                var parent = _registry.GetCelestialBody(origin.ParentId);
+                if (parent != null && parent.BodyType != CelestialBodyType.Star)
+                {
+                    localFrameBodyId = origin.ParentId;
+                    return RouteFrame.LocalParent;
+                }
+            }
+
+            // Default: global frame (interplanetary).
+            return RouteFrame.Global;
+        }
+
+        // ---------------------------------------------------------------
+        // Route builders
+        // ---------------------------------------------------------------
+
+        private ShipRoute BuildGlobalRoute(
+            CelestialBody ship, CelestialBody origin, CelestialBody destination,
+            double currentSimTime, double travelDuration,
+            double destOrbitRadius, double destOrbitPeriod,
+            Func<EntityId, double, SimVec3> positionResolver)
+        {
+            SimVec3 startPos = ComputeShipWorldPosition(ship, currentSimTime, positionResolver);
+
+            double arrivalTime = currentSimTime + travelDuration;
+            SimVec3 destBodyPosAtArrival = positionResolver != null
+                ? positionResolver(destination.Id, arrivalTime)
+                : SimVec3.Zero;
+
+            SimVec3 fromDestToShip = startPos - destBodyPosAtArrival;
+            double nearSideAngleRad = System.Math.Atan2(fromDestToShip.Z, fromDestToShip.X);
+            double arrivalPhaseDeg = NormalizeDeg(nearSideAngleRad * 180.0 / System.Math.PI);
+
+            double orbX = destOrbitRadius * System.Math.Cos(nearSideAngleRad);
+            double orbZ = destOrbitRadius * System.Math.Sin(nearSideAngleRad);
+            SimVec3 arrivalPos = destBodyPosAtArrival + new SimVec3(orbX, 0.0, orbZ);
+
+            return new ShipRoute
+            {
+                OriginBodyId = origin.Id,
+                DestinationBodyId = destination.Id,
+                DepartureTime = currentSimTime,
+                TravelDuration = travelDuration,
+                Frame = RouteFrame.Global,
+                LocalFrameBodyId = EntityId.None,
+                StartWorldPosition = startPos,
+                ArrivalWorldPosition = arrivalPos,
+                DestinationOrbitRadius = destOrbitRadius,
+                DestinationOrbitPeriod = destOrbitPeriod,
+                ArrivalOrbitPhaseDeg = arrivalPhaseDeg
+            };
+        }
+
+        private ShipRoute BuildLocalRoute(
+            CelestialBody ship, CelestialBody origin, CelestialBody destination,
+            EntityId localFrameBodyId,
+            double currentSimTime, double travelDuration,
+            double destOrbitRadius, double destOrbitPeriod,
+            Func<EntityId, double, SimVec3> positionResolver)
+        {
+            SimVec3 frameBodyPos = positionResolver(localFrameBodyId, currentSimTime);
+            SimVec3 shipWorldPos = ComputeShipWorldPosition(ship, currentSimTime, positionResolver);
+            SimVec3 startLocal = shipWorldPos - frameBodyPos;
+
+            double arrivalTime = currentSimTime + travelDuration;
+            SimVec3 frameBodyPosAtArrival = positionResolver(localFrameBodyId, arrivalTime);
+            SimVec3 destBodyPosAtArrival = positionResolver(destination.Id, arrivalTime);
+            SimVec3 destLocalAtArrival = destBodyPosAtArrival - frameBodyPosAtArrival;
+
+            SimVec3 fromDestToShipLocal = startLocal - destLocalAtArrival;
+            double nearSideAngleRad = System.Math.Atan2(fromDestToShipLocal.Z, fromDestToShipLocal.X);
+            double arrivalPhaseDeg = NormalizeDeg(nearSideAngleRad * 180.0 / System.Math.PI);
+
+            double orbX = destOrbitRadius * System.Math.Cos(nearSideAngleRad);
+            double orbZ = destOrbitRadius * System.Math.Sin(nearSideAngleRad);
+            SimVec3 arrivalLocal = destLocalAtArrival + new SimVec3(orbX, 0.0, orbZ);
+
+            SimVec3 arrivalWorld = frameBodyPosAtArrival + arrivalLocal;
+
+            return new ShipRoute
+            {
+                OriginBodyId = origin.Id,
+                DestinationBodyId = destination.Id,
+                DepartureTime = currentSimTime,
+                TravelDuration = travelDuration,
+                Frame = RouteFrame.LocalParent,
+                LocalFrameBodyId = localFrameBodyId,
+                StartWorldPosition = shipWorldPos,
+                ArrivalWorldPosition = arrivalWorld,
+                StartLocalPosition = startLocal,
+                ArrivalLocalPosition = arrivalLocal,
+                DestinationOrbitRadius = destOrbitRadius,
+                DestinationOrbitPeriod = destOrbitPeriod,
+                ArrivalOrbitPhaseDeg = arrivalPhaseDeg
+            };
+        }
+
+        // ---------------------------------------------------------------
+        // Per-tick update
+        // ---------------------------------------------------------------
 
         private void UpdateShip(CelestialBody ship, double currentSimTime,
             Func<EntityId, double, SimVec3> positionResolver)
@@ -134,53 +258,97 @@ namespace SpaceSim.Simulation.Ships
 
             if (progress >= 1.0)
             {
-                // Travel complete — arrive at destination.
-                ArriveAtDestination(ship, route);
+                ArriveAtDestination(ship, route, currentSimTime);
                 return;
             }
 
-            // Interpolate world position between origin and destination.
-            SimVec3 originPos = positionResolver(route.OriginBodyId, currentSimTime);
-            SimVec3 destPos = positionResolver(route.DestinationBodyId, currentSimTime);
-
-            double x = originPos.X + (destPos.X - originPos.X) * progress;
-            double y = originPos.Y + (destPos.Y - originPos.Y) * progress;
-            double z = originPos.Z + (destPos.Z - originPos.Z) * progress;
-
-            info.OverrideWorldPosition = new SimVec3(x, y, z);
+            if (route.Frame == RouteFrame.LocalParent && route.LocalFrameBodyId.IsValid)
+            {
+                SimVec3 localPos = Lerp(route.StartLocalPosition, route.ArrivalLocalPosition, progress);
+                SimVec3 frameBodyPos = positionResolver(route.LocalFrameBodyId, currentSimTime);
+                info.OverrideWorldPosition = frameBodyPos + localPos;
+            }
+            else
+            {
+                info.OverrideWorldPosition = Lerp(route.StartWorldPosition, route.ArrivalWorldPosition, progress);
+            }
         }
 
-        private void ArriveAtDestination(CelestialBody ship, ShipRoute route)
+        // ---------------------------------------------------------------
+        // Arrival
+        // ---------------------------------------------------------------
+
+        private void ArriveAtDestination(CelestialBody ship, ShipRoute route, double currentSimTime)
         {
             var destination = _registry.GetCelestialBody(route.DestinationBodyId);
             if (destination == null)
             {
-                // Destination gone — just idle.
                 ship.ShipInfo.State = ShipState.Idle;
                 ship.ShipInfo.CurrentRoute = null;
                 ship.ShipInfo.OverrideWorldPosition = null;
                 return;
             }
 
-            // Re-parent to destination.
-            // Note: coordinator is responsible for cleaning up transit parent (root star).
             ship.ParentId = destination.Id;
             destination.AddChildId(ship.Id);
             ship.AttachmentMode = AttachmentMode.Orbit;
 
-            // Assign a default orbit around destination.
-            ship.Orbit = OrbitDefinition.Circular(
-                radius: 3.0,
-                period: 12.0,
-                startAngleDeg: 0.0);
+            double period = route.DestinationOrbitPeriod;
+            double meanAnomalyAtEpoch = route.ArrivalOrbitPhaseDeg
+                - 360.0 * currentSimTime / period;
+            meanAnomalyAtEpoch = NormalizeDeg(meanAnomalyAtEpoch);
 
-            // Update state.
+            ship.Orbit = new OrbitDefinition
+            {
+                SemiMajorAxis = route.DestinationOrbitRadius,
+                Eccentricity = 0.0,
+                InclinationDeg = 0.0,
+                LongitudeOfAscendingNodeDeg = 0.0,
+                ArgumentOfPeriapsisDeg = 0.0,
+                MeanAnomalyAtEpochDeg = meanAnomalyAtEpoch,
+                OrbitalPeriod = period,
+                EpochTime = 0.0,
+                IsPrograde = true
+            };
+
             ship.ShipInfo.CurrentRoute = null;
             ship.ShipInfo.OverrideWorldPosition = null;
             ship.ShipInfo.State = ShipState.Orbiting;
 
-            // Notify listeners (UI refresh, etc).
             OnShipArrived?.Invoke(ship.Id, destination.Id);
+        }
+
+        // ---------------------------------------------------------------
+        // Helpers
+        // ---------------------------------------------------------------
+
+        private SimVec3 ComputeShipWorldPosition(
+            CelestialBody ship, double simTime, Func<EntityId, double, SimVec3> positionResolver)
+        {
+            if (positionResolver != null && ship.Orbit != null && ship.ParentId.IsValid)
+            {
+                SimVec3 parentPos = positionResolver(ship.ParentId, simTime);
+                SimVec3 localPos = OrbitalPositionCalculator.CalculatePosition(ship.Orbit, simTime);
+                return parentPos + localPos;
+            }
+            if (positionResolver != null && ship.ParentId.IsValid)
+                return positionResolver(ship.ParentId, simTime);
+            return SimVec3.Zero;
+        }
+
+        private static SimVec3 Lerp(SimVec3 a, SimVec3 b, double t)
+        {
+            return new SimVec3(
+                a.X + (b.X - a.X) * t,
+                a.Y + (b.Y - a.Y) * t,
+                a.Z + (b.Z - a.Z) * t);
+        }
+
+        private static double NormalizeDeg(double deg)
+        {
+            deg = deg % 360.0;
+            if (deg < 0) deg += 360.0;
+            return deg;
         }
     }
 }

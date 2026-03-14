@@ -43,10 +43,10 @@ MonoBehaviour:
     BodyType: 1
     ParentKey: sol
     AttachmentMode: 1
-    Radius: 1.5
+    Radius: 0.15
     IsSelectable: 1
     HasSurface: 1
-    SemiMajorAxis: 30
+    SemiMajorAxis: 300
     Eccentricity: 0
     InclinationDeg: 0
     LongitudeOfAscendingNodeDeg: 0
@@ -64,10 +64,10 @@ MonoBehaviour:
     BodyType: 1
     ParentKey: sol
     AttachmentMode: 1
-    Radius: 1
+    Radius: 0.1
     IsSelectable: 1
     HasSurface: 1
-    SemiMajorAxis: 55
+    SemiMajorAxis: 550
     Eccentricity: 0
     InclinationDeg: 0
     LongitudeOfAscendingNodeDeg: 0
@@ -85,16 +85,37 @@ MonoBehaviour:
     BodyType: 2
     ParentKey: terra
     AttachmentMode: 1
-    Radius: 0.4
+    Radius: 0.04
     IsSelectable: 1
     HasSurface: 1
-    SemiMajorAxis: 5
+    SemiMajorAxis: 50
     Eccentricity: 0
     InclinationDeg: 0
     LongitudeOfAscendingNodeDeg: 0
     ArgumentOfPeriapsisDeg: 0
     MeanAnomalyAtEpochDeg: 45
     OrbitalPeriod: 20
+    EpochTime: 0
+    IsPrograde: 1
+    AxialTiltDeg: 0
+    RotationPeriod: 20
+    InitialRotationDeg: 0
+  - Key: venus
+    DisplayName: Venus
+    LocalizationKey: body.terra
+    BodyType: 1
+    ParentKey: sol
+    AttachmentMode: 1
+    Radius: 0.08
+    IsSelectable: 1
+    HasSurface: 0
+    SemiMajorAxis: 150
+    Eccentricity: 0
+    InclinationDeg: 0
+    LongitudeOfAscendingNodeDeg: 0
+    ArgumentOfPeriapsisDeg: 0
+    MeanAnomalyAtEpochDeg: 45
+    OrbitalPeriod: 10
     EpochTime: 0
     IsPrograde: 1
     AxialTiltDeg: 0
@@ -121,3 +142,13 @@ MonoBehaviour:
     OrbitalRadius: 4
     OrbitalPeriod: 15
     StartAngleDeg: 120
+  - Key: ship_strazh3
+    DisplayName: "\u041F\u0430\u0442\u0440\u0443\u043B\u044C \xAB\u0421\u0442\u0440\u0430\u0436-3\xBB"
+    LocalizationKey: ship.strazh3
+    Role: 2
+    ShipClass: Interceptor
+    ParentBodyKey: ares
+    Radius: 0.12
+    OrbitalRadius: 3
+    OrbitalPeriod: 10
+    StartAngleDeg: 200

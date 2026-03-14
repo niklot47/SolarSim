@@ -12,7 +12,7 @@ Long-term goals: orbital simulation sandbox, ships and stations, NPC traffic and
 
 ### 1. Simulation
 
-Pure game simulation logic. Time progression, orbital calculations, selection state, star system building, ship movement.
+Pure game simulation logic. Time progression, orbital calculations, selection state, star system building, ship movement, NPC scheduling.
 
 Rules:
 - Must NOT depend on UnityEngine
@@ -26,7 +26,8 @@ Key files:
 - `Scripts/Simulation/Core/SampleStarSystemFactory.cs` — hardcoded fallback sample system (with ships)
 - `Scripts/Simulation/Core/StarSystemBuilder.cs` — builds runtime entities from pure build data (bodies + ships)
 - `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — circular orbit position in XZ plane (MVP)
-- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — updates ship travel positions, handles departure and arrival
+- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — anchored travel with Global/LocalParent frame selection, predictive arrival, phase-matched orbit assignment
+- `Scripts/Simulation/Ships/NPCShipScheduler.cs` — auto-assigns routes to NPC ships, role-based destination selection, distance-based duration
 
 ### 2. World
 
@@ -45,7 +46,7 @@ Key files:
 - `Scripts/World/Entities/ShipRole.cs` — enum: Player, Trader, Patrol, Civilian
 - `Scripts/World/Entities/ShipState.cs` — enum: Idle, Orbiting, Travelling, Arrived
 - `Scripts/World/Entities/ShipInfo.cs` — ship data: role, key, class, state, route, override position
-- `Scripts/World/Entities/ShipRoute.cs` — travel route: origin, destination, departure time, duration
+- `Scripts/World/Entities/ShipRoute.cs` — travel route: RouteFrame (Global/LocalParent), origin/destination, start/arrival world+local positions, destination orbit params, arrival phase
 - `Scripts/World/Entities/StarSystem.cs` — container with root body ids and all body ids
 - `Scripts/World/ValueTypes/OrbitDefinition.cs` — full Keplerian orbital elements
 - `Scripts/World/ValueTypes/SpinDefinition.cs` — axial tilt, rotation period
@@ -63,7 +64,7 @@ Rules:
 
 Key files:
 - `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point, DontDestroyOnLoad singleton, creates SimulationClock
-- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services, loads star system, ticks ShipMovementSystem, manages UI refresh
+- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services, loads star system, ticks ShipMovementSystem + NPCShipScheduler, manages transit parenting, syncs NPC params from Inspector
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions to pure build data, calls StarSystemBuilder
 - `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — creates/updates scene visuals, supports travelling ship override positions, manages orbit line visibility
 - `Scripts/Rendering/Planets/CelestialBodyView.cs` — body visual representation with role-based ship colors
@@ -165,7 +166,7 @@ Ships are CelestialBody instances with `BodyType == Ship` and non-null ShipInfo.
 
 **ShipInfo**: ShipRole, ShipKey, ShipClass, ShipState, CurrentRoute (ShipRoute or null), OverrideWorldPosition (SimVec3? for travel).
 
-**ShipRoute**: OriginBodyId, DestinationBodyId, DepartureTime, TravelDuration. Methods: GetProgress(time), IsComplete(time).
+**ShipRoute**: RouteFrame (Global/LocalParent), OriginBodyId, DestinationBodyId, DepartureTime, TravelDuration, StartWorldPosition, ArrivalWorldPosition, StartLocalPosition, ArrivalLocalPosition, LocalFrameBodyId, DestinationOrbitRadius, DestinationOrbitPeriod, ArrivalOrbitPhaseDeg. Methods: GetProgress(time), IsComplete(time).
 
 When ship complexity grows (modules, cargo, AI), a dedicated Ship entity class may be extracted.
 
@@ -193,10 +194,6 @@ StarSystemBuilder.Build()
 WorldRegistry + OrbitalMapRenderer + UI
 ```
 
-Parent-child resolution: Key/ParentKey string matching. Root bodies have empty ParentKey.
-
-Fallback: if no StarSystemDefinition asset assigned, SampleStarSystemFactory.Create() provides Sol + Terra + Ares + Luna + 3 ships.
-
 ------------------------------------------------------------------------
 
 ## Ship Movement Pipeline
@@ -210,18 +207,37 @@ Fallback: if no StarSystemDefinition asset assigned, SampleStarSystemFactory.Cre
 | Travelling | In transit between bodies |
 | Arrived | Momentary (transitions to Orbiting immediately) |
 
-### Travel Flow
+### Route Frame Selection
 
-1. `ShipMovementSystem.StartRoute()`: detach from origin, clear orbit, state → Travelling
-2. Coordinator parents ship to root star (visible in list during transit)
-3. Each tick: progress = elapsed / duration, position = lerp(origin, destination), stored as OverrideWorldPosition
-4. Renderer uses OverrideWorldPosition instead of orbit calculation; orbit line hidden
-5. progress >= 1.0: re-parent to destination, new orbit assigned, state → Orbiting
-6. Coordinator cleans up transit parent, refreshes object list
+| Route type | Frame | Example |
+|---|---|---|
+| Planet ↔ its Moon | LocalParent (planet) | Terra ↔ Luna |
+| Moon ↔ Moon (same parent) | LocalParent (planet) | future Moon1 ↔ Moon2 |
+| Planet ↔ Planet | Global | Terra ↔ Ares |
+| Moon ↔ other Planet | Global | Luna ↔ Ares |
+| Any ↔ Star child | Global | anything involving star-level siblings |
 
-### Position Resolution
+### Anchored Travel Flow
 
-ShipMovementSystem receives `Func<EntityId, double, SimVec3>` delegate from coordinator, calling OrbitalMapRenderer.ResolveWorldPosition() for consistent body positions.
+1. `ShipMovementSystem.StartRoute()`: compute ship's current orbital world position BEFORE detaching
+2. Determine RouteFrame (Global or LocalParent) based on origin/destination hierarchy
+3. Compute arrival time, predict destination body position at arrival, compute near-side orbital insertion point
+4. For LocalParent: compute start/arrival in local coordinates relative to dominant parent
+5. Store pre-computed positions in ShipRoute; set OverrideWorldPosition to start position (no snap)
+6. Detach from parent, clear orbit, parent to root star for list visibility
+7. Each tick:
+   - Global: lerp between fixed world start/arrival positions
+   - LocalParent: lerp in local space, add current frame body world position
+8. On arrival: assign orbit with phase-matched MeanAnomalyAtEpoch (no visible snap), re-parent to destination
+
+### NPC Scheduling Flow
+
+1. NPCShipScheduler.Update() checks all NPC ships in Orbiting state
+2. Applies idle delay (configurable, default 3 sim-s)
+3. Picks destination by role (Trader/Civilian: random, Patrol: ping-pong, Player: skip)
+4. Computes distance-based duration: `distance / travelSpeed` (local distance for local routes)
+5. Calls ShipMovementSystem.StartRoute() with position resolver
+6. Fires OnRouteScheduled → coordinator handles transit parenting + UI refresh
 
 ------------------------------------------------------------------------
 
@@ -233,10 +249,9 @@ ShipMovementSystem receives `Func<EntityId, double, SimVec3>` delegate from coor
 | Body radii | Mm | Sol: 5.0, Terra: 1.5 |
 | Ship radii | Mm | Corvette: 0.15 (placeholder) |
 | Time | sim-s | Terra period: 120 sim-s |
+| Ship speed | Mm/sim-s | NPC default: 2.0 |
 
 Scene conversion via SceneScaleConfig: `scenePos = worldPos * DistanceScale`, `sceneDiameter = max(radius * BodyRadiusScale * 2, MinBodyDiameter)`.
-
-MinBodyDiameter guarantees small ships remain visible.
 
 ------------------------------------------------------------------------
 
@@ -248,7 +263,8 @@ OrbitalSandbox (Scene)
   Directional Light
   GameBootstrap              — creates SimulationClock, calls coordinator.Setup()
   OrbitalMapRenderer         — creates body views + orbit lines
-  OrbitalSandboxCoordinator  — wires services, ticks ShipMovementSystem
+  OrbitalSandboxCoordinator  — wires services, ticks ShipMovementSystem + NPCShipScheduler
+    Inspector params: npcTravelSpeed, npcMinTravelDuration, npcIdleDelay
     (runtime) SelectionBridge
     (runtime) BodyClickHandler
     (runtime) BodyLabelController
@@ -268,7 +284,8 @@ OrbitalSandbox (Scene)
 - Celestial body hierarchy, orbit rendering, camera controls
 - Selection, labels, object list, details panel, time controls
 - World units, scaling, star system asset loading, builder pipeline
-- Ships foundation, ship movement with departure/travel/arrival
+- Ships foundation, anchored ship movement with Global/LocalParent frames
+- NPC scheduling with role-based routing and distance-based duration
 - Dynamic object list refresh on hierarchy changes
 
 ### Deferred
@@ -283,3 +300,4 @@ Stations, docking, economy, cargo, contracts, factions, AI, advanced navigation,
 - Integration instructions: Russian
 - UI strings: localization-ready via UIStrings (current: Russian)
 - Composition over inheritance, explicit dependencies, single responsibility
+- Inspector-serialized fields: use float (not double) for Unity compatibility

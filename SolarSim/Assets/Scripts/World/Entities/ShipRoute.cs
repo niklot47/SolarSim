@@ -1,9 +1,30 @@
 using SpaceSim.Shared.Identifiers;
+using SpaceSim.Shared.Math;
 
 namespace SpaceSim.World.Entities
 {
     /// <summary>
-    /// Minimal route data for a ship travelling between two bodies.
+    /// Determines how the ship's travel position is interpolated.
+    /// </summary>
+    public enum RouteFrame
+    {
+        /// <summary>
+        /// Interpolation in absolute world coordinates.
+        /// Used for interplanetary travel (e.g. Terra -> Ares).
+        /// </summary>
+        Global,
+
+        /// <summary>
+        /// Interpolation in local coordinates relative to a dominant parent body.
+        /// Used for local transfers (e.g. Terra <-> Luna, ship <-> moon).
+        /// Position each tick = parentWorldPos + lerp(localStart, localEnd, progress).
+        /// </summary>
+        LocalParent
+    }
+
+    /// <summary>
+    /// Route data for a ship travelling between two bodies.
+    /// Supports both global and local-frame travel.
     /// Pure C# — no Unity dependency.
     /// </summary>
     public class ShipRoute
@@ -20,20 +41,64 @@ namespace SpaceSim.World.Entities
         /// <summary>Duration of travel in simulation seconds.</summary>
         public double TravelDuration { get; set; }
 
+        // --- Frame selection ---
+
+        /// <summary>How travel position is interpolated.</summary>
+        public RouteFrame Frame { get; set; }
+
+        /// <summary>
+        /// For LocalParent frame: the dominant body whose world position
+        /// is added to the interpolated local offset each tick.
+        /// Ignored for Global frame.
+        /// </summary>
+        public EntityId LocalFrameBodyId { get; set; }
+
+        // --- Global frame data ---
+
+        /// <summary>Ship's world position at departure (Global frame).</summary>
+        public SimVec3 StartWorldPosition { get; set; }
+
+        /// <summary>Predicted world position at arrival (Global frame).</summary>
+        public SimVec3 ArrivalWorldPosition { get; set; }
+
+        // --- Local frame data ---
+
+        /// <summary>Ship's position relative to LocalFrameBody at departure.</summary>
+        public SimVec3 StartLocalPosition { get; set; }
+
+        /// <summary>Target position relative to LocalFrameBody at arrival.</summary>
+        public SimVec3 ArrivalLocalPosition { get; set; }
+
+        // --- Destination orbit data ---
+
+        /// <summary>Orbital radius the ship will use at the destination.</summary>
+        public double DestinationOrbitRadius { get; set; }
+
+        /// <summary>Orbital period the ship will use at the destination.</summary>
+        public double DestinationOrbitPeriod { get; set; }
+
+        /// <summary>
+        /// The orbital phase angle (degrees) at which the ship enters
+        /// orbit around the destination. Used to set MeanAnomalyAtEpoch
+        /// on arrival so the ship doesn't snap.
+        /// </summary>
+        public double ArrivalOrbitPhaseDeg { get; set; }
+
         public ShipRoute()
         {
             OriginBodyId = EntityId.None;
             DestinationBodyId = EntityId.None;
             DepartureTime = 0.0;
             TravelDuration = 1.0;
-        }
-
-        public ShipRoute(EntityId origin, EntityId destination, double departureTime, double travelDuration)
-        {
-            OriginBodyId = origin;
-            DestinationBodyId = destination;
-            DepartureTime = departureTime;
-            TravelDuration = travelDuration > 0.0 ? travelDuration : 1.0;
+            Frame = RouteFrame.Global;
+            LocalFrameBodyId = EntityId.None;
+            StartWorldPosition = SimVec3.Zero;
+            ArrivalWorldPosition = SimVec3.Zero;
+            StartLocalPosition = SimVec3.Zero;
+            ArrivalLocalPosition = SimVec3.Zero;
+            DestinationOrbitRadius = 3.0;
+            DestinationOrbitPeriod = 12.0;
+            ArrivalOrbitPhaseDeg = 0.0;
         }
 
         /// <summary>
@@ -58,7 +123,7 @@ namespace SpaceSim.World.Entities
 
         public override string ToString()
         {
-            return $"Route[{OriginBodyId}->{DestinationBodyId} dep={DepartureTime:F1} dur={TravelDuration:F1}]";
+            return $"Route[{Frame} {OriginBodyId}->{DestinationBodyId} dep={DepartureTime:F1} dur={TravelDuration:F1}]";
         }
     }
 }

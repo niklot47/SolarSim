@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Ship Movement System + documentation update step.
+Last updated after: Step 4 — Anchored Travel + Local-Frame Routes + NPC Scheduling.
 
 ------------------------------------------------------------------------
 
@@ -60,19 +60,35 @@ Last updated after: Ship Movement System + documentation update step.
 - Visual differentiation by role color
 - Full integration: selection, labels, details panel, camera focus
 
-### Ship Movement
+### Ship Movement (Anchored Travel Model)
 - **ShipState**: Idle, Orbiting, Travelling, Arrived
-- **ShipRoute**: origin/destination ids, departure time, duration
+- **RouteFrame**: Global, LocalParent — determines interpolation frame
+- **ShipRoute**: origin/destination ids, departure time, duration, frame selection, pre-computed start/arrival positions (world and local), destination orbit parameters, arrival phase
 - **ShipMovementSystem**: pure C# simulation, ticked by coordinator
-- Linear interpolation during travel, OverrideWorldPosition for renderer
-- Departure: detach from parent, parent to root star for list visibility
-- Arrival: re-parent to destination, new orbit, cleanup transit parent, refresh list
-- **OnShipArrived** event for UI refresh
-- Sample route: Карго-7 auto-flies Terra → Ares (60 sim-s, starts at 2 sim-s)
+  - Anchored departure: ship leaves from current orbital world position (no snap to body center)
+  - Predictive arrival: arrival point computed at predicted future destination position + orbital offset on near side
+  - Two interpolation modes:
+    - **Global frame**: lerp between fixed world positions (interplanetary travel)
+    - **LocalParent frame**: lerp in local coordinates relative to dominant parent, converted to world each tick (local transfers like Planet↔Moon)
+  - Frame auto-selection: Star children use Global, Planet children use LocalParent
+  - Phase-matched orbit assignment on arrival (no visible snap)
+  - **OnShipArrived** event for UI refresh
+
+### NPC Scheduling
+- **NPCShipScheduler** — pure C# scheduler, role-based route selection
+  - Trader/Civilian: random planet/moon destination
+  - Patrol: ping-pong between two bodies
+  - Player ships ignored
+  - Distance-based travel duration: `duration = distance / travelSpeed`
+  - Local-frame distance computation for local routes
+  - Configurable via Inspector: TravelSpeed, MinTravelDuration, IdleDelay
+  - Live tuning: coordinator syncs Inspector values every frame
+  - Position resolver for anchored travel computation
+  - Ticked by OrbitalSandboxCoordinator after ShipMovementSystem
 
 ### Bootstrap and Coordination
 - **GameBootstrap** — creates clock, initializes debug, calls coordinator
-- **OrbitalSandboxCoordinator** — loads system, creates ShipMovementSystem, wires everything, manages transit parenting and UI refresh
+- **OrbitalSandboxCoordinator** — loads system, creates ShipMovementSystem + NPCShipScheduler, wires everything, manages transit parenting and UI refresh, syncs NPC parameters from Inspector
 
 ------------------------------------------------------------------------
 
@@ -97,7 +113,11 @@ Last updated after: Ship Movement System + documentation update step.
 
 ### Transit parenting to root star
 
-During travel, ships are temporarily parented to the system's root star so they remain visible in the hierarchical object list. This is a UI convenience hack. The actual position comes from ShipMovementSystem via OverrideWorldPosition, not from orbital calculation. On arrival, transit parent is cleaned up.
+During travel, ships are temporarily parented to the system's root star so they remain visible in the hierarchical object list. The actual position comes from ShipMovementSystem via OverrideWorldPosition, not from orbital calculation. On arrival, transit parent is cleaned up.
+
+### Inspector serialization: float not double
+
+NPC scheduling parameters (travelSpeed, minTravelDuration, idleDelay) use `float` in SerializeField because Unity Inspector does not serialize `double`. Coordinator converts to double when passing to pure C# systems.
 
 ------------------------------------------------------------------------
 
@@ -129,13 +149,14 @@ During travel, ships are temporarily parented to the system's root star so they 
 ### Clean boundaries maintained
 - Simulation and World layers have zero UnityEngine references (asmdef enforced)
 - ShipMovementSystem is pure C# despite coordinating with rendering via delegate
+- NPCShipScheduler is pure C# with position resolver injected via delegate
 - All rendering in Rendering layer, all UI in UI layer
 
 ### Known technical debt
 - SampleStarSystemFactory uses Russian display names (should use localization keys)
 - Unity 6 EntityId conflict requires using-alias in Rendering/UI files
 - OnGUI labels — acceptable for MVP
-- Ship travel is linear interpolation (not physically realistic)
+- Ship travel is linear interpolation (not physically realistic, but visually correct)
 - Transit parenting is a UI convenience hack
 - ObjectListPanelController.Refresh() rebuilds entire list (fine at current scale)
 
@@ -143,10 +164,10 @@ During travel, ships are temporarily parented to the system's root star so they 
 
 ## Next Recommended Development Phase
 
-**Option A: Route Loop / NPC Scheduling** — extend ShipMovementSystem with multi-leg routes (Terra → Ares → Terra → repeat). Makes sandbox feel alive with continuous traffic. Builds directly on existing movement system.
+**Option A: Stations Foundation** — introduce stations as orbital structures distinct from planets. Enables future trade/logistics. Ships can travel to stations.
 
-**Option B: Stations Foundation** — introduce stations as orbital structures distinct from planets. Enables future trade/logistics.
+**Option B: Economy Foundation** — resource types, production, cargo. Larger step but opens core gameplay.
 
-**Option C: Economy Foundation** — resource types, production, cargo. Larger step but opens core gameplay.
+**Option C: More Ship Types / Civilian Traffic** — add more ships, civilian role behavior, make the sandbox feel busier.
 
-Recommendation: **Option A** — minimal scope, maximum visual impact, validates sustained movement pipeline.
+Recommendation: **Option A** — stations are the next natural docking/trade target and validate the movement system with a new entity type.

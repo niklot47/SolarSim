@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using SpaceSim.Shared.Identifiers;
+using SpaceSim.Shared.Math;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
 
@@ -8,7 +9,7 @@ namespace SpaceSim.Simulation.Ships
 {
     /// <summary>
     /// Automatically assigns new routes to NPC ships that have finished travelling.
-    /// Runs each tick after ShipMovementSystem.
+    /// Runs each tick after ShipMovementSystem.Update().
     /// Pure C# — no UnityEngine dependency.
     /// </summary>
     public class NPCShipScheduler
@@ -17,82 +18,60 @@ namespace SpaceSim.Simulation.Ships
         private readonly ShipMovementSystem _movementSystem;
         private readonly Func<double> _getSimTime;
 
-        // Configurable travel duration range (sim-seconds).
-        private readonly double _minTravelDuration;
-        private readonly double _maxTravelDuration;
+        /// <summary>Travel speed in world units per sim-second (Mm/sim-s).</summary>
+        public double TravelSpeed { get; set; }
 
-        // Delay after arrival before scheduling next route (sim-seconds).
-        private readonly double _idleDelay;
+        /// <summary>Minimum travel duration floor (sim-seconds).</summary>
+        public double MinTravelDuration { get; set; }
 
-        // Track when each ship arrived so we can apply idle delay.
+        /// <summary>Delay after arrival before scheduling next route (sim-seconds).</summary>
+        public double IdleDelay { get; set; }
+
         private readonly Dictionary<EntityId, double> _arrivalTimes = new Dictionary<EntityId, double>();
-
-        // Track last origin for patrol ping-pong behavior.
         private readonly Dictionary<EntityId, EntityId> _lastPatrolOrigin = new Dictionary<EntityId, EntityId>();
-
-        // Simple deterministic RNG seeded per session.
         private readonly Random _rng;
-
-        // Cached list of valid destination body ids (planets, moons — not stars, not ships).
         private readonly List<EntityId> _destinationCandidates = new List<EntityId>();
         private bool _candidatesDirty = true;
 
-        // Callback invoked when scheduler starts a route.
-        // Coordinator uses this to handle transit parenting and UI refresh.
+        private Func<EntityId, double, SimVec3> _positionResolver;
+
         public event Action<EntityId> OnRouteScheduled;
 
-        /// <summary>
-        /// Creates an NPC ship scheduler.
-        /// </summary>
-        /// <param name="registry">World registry to query entities.</param>
-        /// <param name="movementSystem">Ship movement system to start routes.</param>
-        /// <param name="getSimTime">Function returning current simulation time.</param>
-        /// <param name="minTravelDuration">Minimum travel duration in sim-seconds.</param>
-        /// <param name="maxTravelDuration">Maximum travel duration in sim-seconds.</param>
-        /// <param name="idleDelay">Delay before NPC departs again after arrival (sim-seconds).</param>
-        /// <param name="seed">RNG seed for deterministic scheduling.</param>
         public NPCShipScheduler(
             WorldRegistry registry,
             ShipMovementSystem movementSystem,
             Func<double> getSimTime,
-            double minTravelDuration = 40.0,
-            double maxTravelDuration = 90.0,
+            double travelSpeed = 2.0,
+            double minTravelDuration = 3.0,
             double idleDelay = 3.0,
             int seed = 42)
         {
             _registry = registry ?? throw new ArgumentNullException(nameof(registry));
             _movementSystem = movementSystem ?? throw new ArgumentNullException(nameof(movementSystem));
             _getSimTime = getSimTime ?? throw new ArgumentNullException(nameof(getSimTime));
-            _minTravelDuration = minTravelDuration;
-            _maxTravelDuration = maxTravelDuration;
-            _idleDelay = idleDelay;
+            TravelSpeed = travelSpeed > 0.0 ? travelSpeed : 2.0;
+            MinTravelDuration = minTravelDuration > 0.0 ? minTravelDuration : 3.0;
+            IdleDelay = idleDelay;
             _rng = new Random(seed);
         }
 
-        /// <summary>
-        /// Call once after star system is fully loaded to rebuild destination cache.
-        /// Also call if celestial bodies are added/removed at runtime.
-        /// </summary>
+        public void SetPositionResolver(Func<EntityId, double, SimVec3> resolver)
+        {
+            _positionResolver = resolver;
+        }
+
         public void InvalidateDestinationCache()
         {
             _candidatesDirty = true;
         }
 
-        /// <summary>
-        /// Main update. Call each tick after ShipMovementSystem.Update().
-        /// </summary>
         public void Update()
         {
             if (_candidatesDirty)
-            {
                 RebuildDestinationCandidates();
-            }
 
             if (_destinationCandidates.Count < 2)
-            {
-                // Not enough destinations to schedule routes.
                 return;
-            }
 
             double simTime = _getSimTime();
 
@@ -100,147 +79,191 @@ namespace SpaceSim.Simulation.Ships
             {
                 if (body.BodyType != CelestialBodyType.Ship)
                     continue;
-
                 if (body.ShipInfo == null)
                     continue;
-
-                // Skip player ships.
                 if (body.ShipInfo.Role == ShipRole.Player)
                     continue;
-
-                // Only schedule ships that are currently orbiting (finished previous route).
                 if (body.ShipInfo.State != ShipState.Orbiting)
                     continue;
 
-                // Apply idle delay: record arrival time on first observation.
                 if (!_arrivalTimes.ContainsKey(body.Id))
-                {
                     _arrivalTimes[body.Id] = simTime;
-                }
 
                 double arrivedAt = _arrivalTimes[body.Id];
-                if (simTime - arrivedAt < _idleDelay)
-                {
-                    // Still waiting at destination.
+                if (simTime - arrivedAt < IdleDelay)
                     continue;
-                }
 
-                // Ready to depart — pick destination and start route.
                 EntityId destination = PickDestination(body);
-                if (destination == default)
+                if (!destination.IsValid)
                     continue;
 
-                // Remember current parent before departure (for patrol ping-pong).
                 EntityId currentParent = body.ParentId;
+                double duration = ComputeTravelDuration(body, destination, simTime);
 
-                double duration = _minTravelDuration
-                    + _rng.NextDouble() * (_maxTravelDuration - _minTravelDuration);
-
-                bool started = _movementSystem.StartRoute(body.Id, destination, simTime, duration);
+                bool started = _movementSystem.StartRoute(
+                    body.Id, destination, simTime, duration, _positionResolver);
 
                 if (started)
                 {
-                    // Track patrol origin for ping-pong.
                     _lastPatrolOrigin[body.Id] = currentParent;
-
-                    // Clear arrival tracking so next arrival gets a fresh timestamp.
                     _arrivalTimes.Remove(body.Id);
-
-                    // Notify coordinator to handle transit parenting.
                     OnRouteScheduled?.Invoke(body.Id);
                 }
             }
         }
 
         /// <summary>
-        /// Picks destination based on ship role.
+        /// Compute travel duration. Uses local-frame distance for local routes,
+        /// global distance for interplanetary routes.
         /// </summary>
+        private double ComputeTravelDuration(CelestialBody ship, EntityId destinationId, double simTime)
+        {
+            double speed = TravelSpeed > 0.0 ? TravelSpeed : 2.0;
+
+            if (_positionResolver == null)
+                return MinTravelDuration;
+
+            var destination = _registry.GetCelestialBody(destinationId);
+            if (destination == null)
+                return MinTravelDuration;
+
+            var origin = _registry.GetCelestialBody(ship.ParentId);
+            if (origin == null)
+                return MinTravelDuration;
+
+            // Get ship's world position.
+            SimVec3 shipPos = ComputeShipWorldPos(ship, simTime);
+
+            // Determine if this is a local route.
+            EntityId localFrameBodyId = EntityId.None;
+            bool isLocal = false;
+
+            // Case 1: destination is parent of origin (Moon -> Planet).
+            if (origin.ParentId == destinationId)
+            {
+                localFrameBodyId = destinationId;
+                isLocal = true;
+            }
+            // Case 2: origin is parent of destination (Planet -> Moon).
+            else if (destination.ParentId == origin.Id)
+            {
+                localFrameBodyId = origin.Id;
+                isLocal = true;
+            }
+            // Case 3: siblings (Moon1 -> Moon2).
+            else if (origin.ParentId.IsValid && origin.ParentId == destination.ParentId)
+            {
+                localFrameBodyId = origin.ParentId;
+                isLocal = true;
+            }
+
+            double distance;
+
+            if (isLocal && localFrameBodyId.IsValid)
+            {
+                // Compute distance in local frame.
+                SimVec3 framePos = _positionResolver(localFrameBodyId, simTime);
+                SimVec3 shipLocal = shipPos - framePos;
+                SimVec3 destPos = _positionResolver(destinationId, simTime);
+                SimVec3 destLocal = destPos - framePos;
+                distance = SimVec3.Distance(shipLocal, destLocal);
+            }
+            else
+            {
+                // Global distance.
+                SimVec3 destPos = _positionResolver(destinationId, simTime);
+                distance = SimVec3.Distance(shipPos, destPos);
+            }
+
+            double duration = distance / speed;
+            if (duration < MinTravelDuration)
+                duration = MinTravelDuration;
+
+            return duration;
+        }
+
+        private SimVec3 ComputeShipWorldPos(CelestialBody ship, double simTime)
+        {
+            if (_positionResolver != null && ship.Orbit != null && ship.ParentId.IsValid)
+            {
+                SimVec3 parentPos = _positionResolver(ship.ParentId, simTime);
+                SimVec3 localPos = Simulation.Orbits.OrbitalPositionCalculator
+                    .CalculatePosition(ship.Orbit, simTime);
+                return parentPos + localPos;
+            }
+            if (_positionResolver != null && ship.ParentId.IsValid)
+            {
+                return _positionResolver(ship.ParentId, simTime);
+            }
+            return SimVec3.Zero;
+        }
+
         private EntityId PickDestination(CelestialBody ship)
         {
             switch (ship.ShipInfo.Role)
             {
                 case ShipRole.Trader:
                     return PickRandomDestination(ship.ParentId);
-
                 case ShipRole.Patrol:
                     return PickPatrolDestination(ship);
-
                 case ShipRole.Civilian:
                     return PickRandomDestination(ship.ParentId);
-
                 default:
                     return PickRandomDestination(ship.ParentId);
             }
         }
 
-        /// <summary>
-        /// Picks a random destination different from the current parent body.
-        /// </summary>
         private EntityId PickRandomDestination(EntityId excludeBodyId)
         {
-            // Build filtered list (exclude current location).
-            var candidates = new List<EntityId>();
+            int count = 0;
             for (int i = 0; i < _destinationCandidates.Count; i++)
             {
                 if (_destinationCandidates[i] != excludeBodyId)
-                {
-                    candidates.Add(_destinationCandidates[i]);
-                }
+                    count++;
             }
+            if (count == 0) return EntityId.None;
 
-            if (candidates.Count == 0)
-                return default;
-
-            return candidates[_rng.Next(candidates.Count)];
+            int pick = _rng.Next(count);
+            int idx = 0;
+            for (int i = 0; i < _destinationCandidates.Count; i++)
+            {
+                if (_destinationCandidates[i] == excludeBodyId)
+                    continue;
+                if (idx == pick)
+                    return _destinationCandidates[i];
+                idx++;
+            }
+            return EntityId.None;
         }
 
-        /// <summary>
-        /// Patrol ships ping-pong: go back to where they came from.
-        /// If no previous origin is known, fall back to random.
-        /// </summary>
         private EntityId PickPatrolDestination(CelestialBody ship)
         {
             if (_lastPatrolOrigin.TryGetValue(ship.Id, out EntityId previousOrigin))
             {
-                // Verify previous origin is still a valid destination.
                 if (_destinationCandidates.Contains(previousOrigin) && previousOrigin != ship.ParentId)
-                {
                     return previousOrigin;
-                }
             }
-
-            // Fallback: random destination (first patrol leg or invalid origin).
             return PickRandomDestination(ship.ParentId);
         }
 
-        /// <summary>
-        /// Rebuilds the cached list of valid destination bodies (planets and moons only).
-        /// </summary>
         private void RebuildDestinationCandidates()
         {
             _destinationCandidates.Clear();
-
             foreach (var body in _registry.AllCelestialBodies)
             {
-                // Valid destinations: planets, moons (not stars, ships, stations, asteroids).
                 if (body.BodyType == CelestialBodyType.Planet ||
                     body.BodyType == CelestialBodyType.Moon)
                 {
                     _destinationCandidates.Add(body.Id);
                 }
             }
-
             _candidatesDirty = false;
         }
 
-        /// <summary>
-        /// Returns a short status summary for debug purposes.
-        /// </summary>
         public string GetStatus()
         {
-            int tracked = _arrivalTimes.Count;
-            int destinations = _destinationCandidates.Count;
-            return $"NPCShipScheduler: {destinations} destinations cached, {tracked} ships waiting to depart";
+            return $"NPCShipScheduler: {_destinationCandidates.Count} destinations, " +
+                   $"{_arrivalTimes.Count} ships waiting, speed={TravelSpeed:F1} Mm/s";
         }
     }
 }
