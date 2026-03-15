@@ -84,10 +84,11 @@ Key files:
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions (bodies + ships + stations + docking ports) to pure build data, calls StarSystemBuilder
 - `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — creates/updates scene visuals (spheres for bodies, cubes for stations), manages orbit lines, delegates all position resolution to WorldPositionResolver
 - `Scripts/Rendering/Planets/CelestialBodyView.cs` — body visual representation with role-based ship colors, station kind colors (cyan orbital, orange surface), station scale ×⅓
-- `Scripts/Rendering/Cameras/OrbitalCameraController.cs` — pan (MMB), zoom (scroll), rotate (RMB), smooth focus (Input System)
+- `Scripts/Rendering/Cameras/OrbitalCameraController.cs` — pan (MMB), zoom (scroll), rotate (RMB), smooth focus (Input System), BlockInput property to suppress input when UI has focus
 - `Scripts/Rendering/Cameras/CameraFocusTarget.cs` — marks objects as focusable
 - `Scripts/Rendering/Selection/SelectionBridge.cs` — selection ring + highlight + camera focus
 - `Scripts/Rendering/Selection/BodyClickHandler.cs` — raycast click selection (UI Toolkit aware)
+- `Scripts/Rendering/Selection/UIInputBlocker.cs` — blocks camera input when mouse is over UI panels or modal is open; WheelEvent stoppers prevent scroll bleed-through
 - `Scripts/Rendering/Labels/BodyLabelController.cs` — IMGUI screen-space name labels with zoom-based fade
 
 ### 4. UI
@@ -100,12 +101,13 @@ Rules:
 - Uses UIStrings for all localizable text
 
 Key files:
-- `Scripts/UI/Panels/ObjectListPanelController.cs` — hierarchical body list with selection sync, supports dynamic refresh
-- `Scripts/UI/Panels/ObjectDetailsPanelController.cs` — body properties, ship state/destination/SOI body/docking info/cargo contents, station kind/attachment/docking ports/occupancy/storage contents/production info
+- `Scripts/UI/Panels/ObjectListPanelController.cs` — hierarchical body list with icon placeholders and selection sync, supports dynamic refresh, collapsible panel header (shrinks to header-only)
+- `Scripts/UI/Panels/ObjectDetailsPanelController.cs` — body properties, ship state/destination/SOI body/docking info/cargo contents, station kind/attachment/docking ports/occupancy/storage contents/production info, collapsible header, "Детальней" button opens modal
+- `Scripts/UI/Panels/DetailModalController.cs` — full-screen modal detail window with 5 tabs (Details, Market, Missions, Modules, Hangar), programmatic content building, close via X or overlay click
 - `Scripts/UI/Panels/TimeControlsPanelController.cs` — pause + x1/x10/x100 speed buttons
-- `Scripts/UI/Localization/UIStrings.cs` — centralized Russian string provider (body types, ship roles, ship states incl. docking states, station kinds, attachment modes, SOI labels, docking labels, resource names full + short, cargo/storage/production labels)
-- `UI/UXML/OrbitalSandboxScreen.uxml` — root layout with left panel, viewport, right panel, time strip, station/SOI/docking/cargo/storage/production detail rows
-- `UI/USS/OrbitalSandboxScreen.uss` — styling (260px panels, 12px font, word-wrap for values)
+- `Scripts/UI/Localization/UIStrings.cs` — centralized Russian string provider (body types, ship roles, ship states incl. docking states, station kinds, attachment modes, SOI labels, docking labels, resource names full + short, cargo/storage/production labels, modal tab/section/placeholder strings)
+- `UI/UXML/OrbitalSandboxScreen.uxml` — root layout with collapsible left/right panels, modal overlay, tabbed detail window
+- `UI/USS/OrbitalSandboxScreen.uss` — green terminal aesthetic with CSS custom properties for theme colors, collapsible panels, list item hover highlight, themed scrollbars, modal styles
 
 ### 5. Data
 

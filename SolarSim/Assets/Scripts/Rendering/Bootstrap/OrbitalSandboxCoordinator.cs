@@ -386,6 +386,16 @@ namespace SpaceSim.Rendering.Bootstrap
             detailsPanel.Initialize(_registry, _selectionService);
             detailsPanel.SetupUI(uiRoot);
 
+            // Create and wire the modal detail controller.
+            var modalController = gameObject.AddComponent<DetailModalController>();
+            modalController.Initialize(_registry);
+            modalController.SetupUI(uiRoot);
+            detailsPanel.SetModalController(modalController);
+
+            // Create input blocker to prevent camera zoom over UI panels and modal.
+            var inputBlocker = gameObject.AddComponent<UIInputBlocker>();
+            inputBlocker.Initialize(cameraController, uiDocument, modalController);
+
             var timePanel = gameObject.AddComponent<TimeControlsPanelController>();
             timePanel.Initialize(clock);
             timePanel.SetupUI(uiRoot);

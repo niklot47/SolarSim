@@ -1,13 +1,19 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
     <Style src="/Assets/UI/USS/OrbitalSandboxScreen.uss" />
     <ui:VisualElement name="root" class="root-container">
-        <!-- Left panel: object list -->
+
+        <!-- ========== LEFT PANEL: Object list ========== -->
         <ui:VisualElement name="left-panel" class="side-panel left-panel">
-            <ui:Label name="object-list-title" class="panel-title" />
-            <ui:ListView name="object-list-view" class="object-list" />
+            <ui:VisualElement name="left-panel-header" class="panel-header">
+                <ui:Label name="object-list-title" class="panel-title" />
+                <ui:Button name="left-collapse-btn" class="panel-collapse-btn" text="&#x25BC;" />
+            </ui:VisualElement>
+            <ui:VisualElement name="left-panel-body" class="panel-body">
+                <ui:ListView name="object-list-view" class="object-list" />
+            </ui:VisualElement>
         </ui:VisualElement>
 
-        <!-- Center: 3D viewport + time controls overlay -->
+        <!-- ========== CENTER: 3D viewport + time controls ========== -->
         <ui:VisualElement name="center-viewport" class="center-viewport" picking-mode="Ignore">
             <ui:VisualElement name="time-controls" class="time-controls" picking-mode="Position">
                 <ui:Button name="time-btn-pause" class="time-btn" />
@@ -20,202 +26,256 @@
             </ui:VisualElement>
         </ui:VisualElement>
 
-        <!-- Right panel: details -->
+        <!-- ========== RIGHT PANEL: Details ========== -->
         <ui:VisualElement name="right-panel" class="side-panel right-panel">
-            <ui:Label name="details-title" class="panel-title" />
-            <ui:Label name="details-no-selection" class="no-selection-text" />
+            <ui:VisualElement name="right-panel-header" class="panel-header">
+                <ui:Button name="right-collapse-btn" class="panel-collapse-btn" text="&#x25BC;" />
+                <ui:Label name="details-title" class="panel-title" />
+            </ui:VisualElement>
+            <ui:VisualElement name="right-panel-body" class="panel-body">
+                <ui:Label name="details-no-selection" class="no-selection-text" />
 
-            <ui:VisualElement name="details-content" class="details-content">
-                <!-- Name -->
-                <ui:VisualElement class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-name-label" class="details-label" />
+                <ui:VisualElement name="details-content" class="details-content">
+                    <!-- Name -->
+                    <ui:VisualElement class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-name-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-name-value" class="details-value" />
+                        </ui:VisualElement>
                     </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-name-value" class="details-value" />
+
+                    <!-- Type -->
+                    <ui:VisualElement class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-type-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-type-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Radius -->
+                    <ui:VisualElement class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-radius-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-radius-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Parent -->
+                    <ui:VisualElement class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-parent-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-parent-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- SOI Radius (for bodies with SOI) -->
+                    <ui:VisualElement name="details-soiradius-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-soiradius-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-soiradius-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Ship: Role -->
+                    <ui:VisualElement name="details-role-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-role-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-role-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Ship: Class -->
+                    <ui:VisualElement name="details-class-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-class-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-class-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Ship: State -->
+                    <ui:VisualElement name="details-state-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-state-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-state-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Ship: Destination -->
+                    <ui:VisualElement name="details-dest-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-dest-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-dest-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Ship: Dominant SOI body -->
+                    <ui:VisualElement name="details-soi-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-soi-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-soi-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Ship: Docked At -->
+                    <ui:VisualElement name="details-docked-at-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-docked-at-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-docked-at-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Ship: Docking Port -->
+                    <ui:VisualElement name="details-docked-port-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-docked-port-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-docked-port-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Ship: Cargo -->
+                    <ui:VisualElement name="details-cargo-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-cargo-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-cargo-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Station: Kind -->
+                    <ui:VisualElement name="details-stationkind-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-stationkind-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-stationkind-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Station: Attachment -->
+                    <ui:VisualElement name="details-attachment-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-attachment-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-attachment-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Station: Docking Ports count -->
+                    <ui:VisualElement name="details-station-ports-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-station-ports-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-station-ports-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Station: Ports Occupied -->
+                    <ui:VisualElement name="details-station-occupied-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-station-occupied-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-station-occupied-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Station: Storage -->
+                    <ui:VisualElement name="details-storage-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-storage-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-storage-value" class="details-value" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- Station: Production -->
+                    <ui:VisualElement name="details-production-row" class="details-row">
+                        <ui:VisualElement class="details-cell-label">
+                            <ui:Label name="details-production-label" class="details-label" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="details-cell-value">
+                            <ui:Label name="details-production-value" class="details-value" />
+                        </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>
 
-                <!-- Type -->
-                <ui:VisualElement class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-type-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-type-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Radius -->
-                <ui:VisualElement class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-radius-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-radius-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Parent -->
-                <ui:VisualElement class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-parent-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-parent-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- SOI Radius (for bodies with SOI) -->
-                <ui:VisualElement name="details-soiradius-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-soiradius-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-soiradius-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Ship: Role -->
-                <ui:VisualElement name="details-role-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-role-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-role-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Ship: Class -->
-                <ui:VisualElement name="details-class-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-class-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-class-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Ship: State -->
-                <ui:VisualElement name="details-state-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-state-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-state-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Ship: Destination -->
-                <ui:VisualElement name="details-dest-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-dest-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-dest-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Ship: Dominant SOI body -->
-                <ui:VisualElement name="details-soi-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-soi-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-soi-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Ship: Docked At (station name) -->
-                <ui:VisualElement name="details-docked-at-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-docked-at-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-docked-at-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Ship: Docking Port -->
-                <ui:VisualElement name="details-docked-port-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-docked-port-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-docked-port-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Ship: Cargo -->
-                <ui:VisualElement name="details-cargo-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-cargo-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-cargo-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Station: Kind -->
-                <ui:VisualElement name="details-stationkind-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-stationkind-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-stationkind-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Station: Attachment -->
-                <ui:VisualElement name="details-attachment-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-attachment-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-attachment-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Station: Docking Ports count -->
-                <ui:VisualElement name="details-station-ports-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-station-ports-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-station-ports-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Station: Ports Occupied -->
-                <ui:VisualElement name="details-station-occupied-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-station-occupied-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-station-occupied-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Station: Storage -->
-                <ui:VisualElement name="details-storage-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-storage-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-storage-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <!-- Station: Production -->
-                <ui:VisualElement name="details-production-row" class="details-row">
-                    <ui:VisualElement class="details-cell-label">
-                        <ui:Label name="details-production-label" class="details-label" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="details-cell-value">
-                        <ui:Label name="details-production-value" class="details-value" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
+                <!-- "Details" button -->
+                <ui:Button name="details-more-btn" class="details-more-btn" />
             </ui:VisualElement>
         </ui:VisualElement>
+
+        <!-- ========== MODAL: Detailed object view ========== -->
+        <ui:VisualElement name="modal-overlay" class="modal-overlay" picking-mode="Position" style="display: none;">
+            <ui:VisualElement name="modal-window" class="modal-window">
+                <!-- Header -->
+                <ui:VisualElement class="modal-header">
+                    <ui:VisualElement class="modal-header-text">
+                        <ui:Label name="modal-title" class="modal-title" />
+                        <ui:Label name="modal-subtitle" class="modal-subtitle" />
+                    </ui:VisualElement>
+                    <ui:Button name="modal-close-btn" class="modal-close-btn" text="X" />
+                </ui:VisualElement>
+
+                <!-- Tabs -->
+                <ui:VisualElement name="modal-tabs" class="modal-tabs">
+                    <ui:Button name="modal-tab-details" class="modal-tab modal-tab-active" />
+                    <ui:Button name="modal-tab-market" class="modal-tab" />
+                    <ui:Button name="modal-tab-missions" class="modal-tab" />
+                    <ui:Button name="modal-tab-modules" class="modal-tab" />
+                    <ui:Button name="modal-tab-hangar" class="modal-tab" />
+                </ui:VisualElement>
+
+                <!-- Tab content area -->
+                <ui:ScrollView name="modal-body" class="modal-body">
+                    <!-- Details tab content -->
+                    <ui:VisualElement name="modal-content-details" class="modal-tab-content" />
+                    <!-- Market tab content (placeholder) -->
+                    <ui:VisualElement name="modal-content-market" class="modal-tab-content modal-tab-content-hidden">
+                        <ui:Label class="modal-empty-text" />
+                    </ui:VisualElement>
+                    <!-- Missions tab content (placeholder) -->
+                    <ui:VisualElement name="modal-content-missions" class="modal-tab-content modal-tab-content-hidden">
+                        <ui:Label class="modal-empty-text" />
+                    </ui:VisualElement>
+                    <!-- Modules tab content (placeholder) -->
+                    <ui:VisualElement name="modal-content-modules" class="modal-tab-content modal-tab-content-hidden">
+                        <ui:Label class="modal-empty-text" />
+                    </ui:VisualElement>
+                    <!-- Hangar tab content (placeholder) -->
+                    <ui:VisualElement name="modal-content-hangar" class="modal-tab-content modal-tab-content-hidden">
+                        <ui:Label class="modal-empty-text" />
+                    </ui:VisualElement>
+                </ui:ScrollView>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
     </ui:VisualElement>
 </ui:UXML>

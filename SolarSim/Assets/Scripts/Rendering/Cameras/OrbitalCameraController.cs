@@ -7,6 +7,10 @@ namespace SpaceSim.Rendering.Cameras
     /// Minimal orbital camera controller for the sandbox view.
     /// Supports pan, zoom, focus on target, and smooth focus transitions.
     /// Uses the new Input System package.
+    ///
+    /// BlockInput property allows UI controllers to suppress camera input
+    /// when the mouse is over UI panels or a modal is open, preventing
+    /// accidental zoom while scrolling UI content.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class OrbitalCameraController : MonoBehaviour
@@ -40,6 +44,12 @@ namespace SpaceSim.Rendering.Cameras
 
         /// <summary>Current camera distance from focus point.</summary>
         public float CurrentDistance => currentDistance;
+
+        /// <summary>
+        /// When true, all camera input (zoom, pan, rotate) is suppressed.
+        /// Set by UI controllers when mouse is over panels or modal is open.
+        /// </summary>
+        public bool BlockInput { get; set; }
 
         /// <summary>
         /// Set a transform to follow. Camera will orbit around it.
@@ -105,9 +115,14 @@ namespace SpaceSim.Rendering.Cameras
                 _focusPoint = _focusTarget.position;
             }
 
-            HandleZoom();
-            HandlePan();
-            HandleRotation();
+            // Skip input processing when UI has focus.
+            if (!BlockInput)
+            {
+                HandleZoom();
+                HandlePan();
+                HandleRotation();
+            }
+
             ApplyCameraTransform();
         }
 

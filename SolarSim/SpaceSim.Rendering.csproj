@@ -53,6 +53,7 @@
     <Compile Include="Assets\Scripts\Rendering\Selection\BodyClickHandler.cs" />
     <Compile Include="Assets\Scripts\Rendering\Cameras\OrbitalCameraController.cs" />
     <Compile Include="Assets\Scripts\Rendering\Bootstrap\OrbitalSandboxCoordinator.cs" />
+    <Compile Include="Assets\Scripts\Rendering\Selection\UIInputBlocker.cs" />
     <Compile Include="Assets\Scripts\Rendering\Labels\BodyLabelController.cs" />
     <Compile Include="Assets\Scripts\Rendering\Selection\SelectionBridge.cs" />
     <Compile Include="Assets\Scripts\Rendering\Bootstrap\StarSystemLoader.cs" />

@@ -31,6 +31,7 @@ namespace SpaceSim.UI.Localization
             ["panel.details.station_kind"] = "\u0422\u0438\u043f \u0441\u0442.",
             ["panel.details.attachment"] = "\u041a\u0440\u0435\u043f\u043b\u0435\u043d\u0438\u0435",
             ["panel.details.soi_radius"] = "\u0420\u0430\u0434\u0438\u0443\u0441 SOI",
+            ["panel.details.more_btn"] = "\u0414\u0435\u0442\u0430\u043b\u044c\u043d\u0435\u0439",
 
             // Docking details.
             ["panel.details.docked_at"] = "\u041f\u0440\u0438\u0441\u0442\u044b\u043a.",
@@ -102,7 +103,32 @@ namespace SpaceSim.UI.Localization
             // Time controls.
             ["time.pause"] = "\u041f\u0430\u0443\u0437\u0430",
             ["time.resume"] = "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c",
-            ["time.status.paused"] = "\u041f\u0430\u0443\u0437\u0430"
+            ["time.status.paused"] = "\u041f\u0430\u0443\u0437\u0430",
+
+            // Modal detail window tabs.
+            ["modal.tab.details"] = "\u0414\u0435\u0442\u0430\u043b\u0438",
+            ["modal.tab.market"] = "\u0420\u044b\u043d\u043e\u043a",
+            ["modal.tab.missions"] = "\u0417\u0430\u0434\u0430\u043d\u0438\u044f",
+            ["modal.tab.modules"] = "\u041c\u043e\u0434\u0443\u043b\u0438",
+            ["modal.tab.hangar"] = "\u0410\u043d\u0433\u0430\u0440",
+
+            // Modal section headers.
+            ["modal.section.identity"] = "\u0418\u0434\u0435\u043d\u0442\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u044f",
+            ["modal.section.physical"] = "\u0424\u0438\u0437\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u043f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b",
+            ["modal.section.orbit"] = "\u041e\u0440\u0431\u0438\u0442\u0430",
+            ["modal.section.docking"] = "\u0421\u0442\u044b\u043a\u043e\u0432\u043a\u0430",
+            ["modal.section.economy"] = "\u042d\u043a\u043e\u043d\u043e\u043c\u0438\u043a\u0430",
+            ["modal.section.production"] = "\u041f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u043e",
+
+            // Modal details labels.
+            ["modal.details.orbit_radius"] = "\u0420\u0430\u0434\u0438\u0443\u0441 \u043e\u0440\u0431\u0438\u0442\u044b",
+            ["modal.details.orbit_period"] = "\u041f\u0435\u0440\u0438\u043e\u0434",
+
+            // Modal placeholder text for empty tabs.
+            ["modal.placeholder.market"] = "\u0420\u044b\u043d\u043e\u043a \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d",
+            ["modal.placeholder.missions"] = "\u0417\u0430\u0434\u0430\u043d\u0438\u044f \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b",
+            ["modal.placeholder.modules"] = "\u041c\u043e\u0434\u0443\u043b\u0438 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b",
+            ["modal.placeholder.hangar"] = "\u0410\u043d\u0433\u0430\u0440 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d"
         };
 
         public static string Get(string key)

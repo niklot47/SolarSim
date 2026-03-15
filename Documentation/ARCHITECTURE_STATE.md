@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 11 — Station Production / Consumption Foundation.
+Last updated after: Step 12 — UI Update 1 (Green Terminal Theme, Collapsible Panels, Detail Modal, Input Blocking).
 
 ------------------------------------------------------------------------
 
@@ -129,14 +129,16 @@ Last updated after: Step 11 — Station Production / Consumption Foundation.
 - **BodyClickHandler** — raycast click selection (UI Toolkit aware)
 
 ### UI Panels
-- **ObjectListPanelController** — hierarchical body list, dynamic refresh on hierarchy changes
-- **ObjectDetailsPanelController** — body properties, ship role/class/state/destination/SOI body/docking info (docked at, port), station kind/attachment/docking ports/occupancy, SOI radius for bodies, ship cargo contents, station storage contents, station production info (output rate, inputs, stall status)
+- **ObjectListPanelController** — hierarchical body list with icon placeholders (colored circles by body type/role), hover highlight with border, dynamic refresh, collapsible panel header (shrinks to header-only)
+- **ObjectDetailsPanelController** — compact body properties panel with collapsible header (shrinks to header-only), ship role/class/state/destination/SOI/docking/cargo, station kind/attachment/docking/storage/production, "Детальней" button opens modal
+- **DetailModalController** — full-screen modal window with tabbed interface: Детали (full object info with sections), Рынок (placeholder), Задания (placeholder), Модули (placeholder), Ангар (placeholder); close via X button or overlay click; live-updates details tab; styled scrollbar
 - **TimeControlsPanelController** — pause + x1/x10/x100
-- **UIStrings** — Russian strings: body types, ship roles, ship states, station kinds, attachment modes, SOI labels, docking labels, resource names full (Продовольствие, Металлы, Топливо, Электроника) + short (Еда, Мет., Топл., Элек.), cargo/storage/production labels
-- **OrbitalSandboxScreen.uxml/.uss** — root layout with 260px panels, 12px font, word-wrap for values, station/SOI/docking/cargo/storage/production detail rows
+- **UIInputBlocker** — blocks camera zoom/pan/rotate when mouse is over UI panels or modal is open; WheelEvent stoppers on all blocking panels; lives in Rendering layer (depends on OrbitalCameraController)
+- **UIStrings** — Russian strings: body types, ship roles, ship states, station kinds, attachment modes, SOI labels, docking labels, resource names full + short, cargo/storage/production labels, modal tab names, modal section headers, modal placeholders
+- **OrbitalSandboxScreen.uxml/.uss** — green terminal aesthetic with CSS custom properties for theme colors (--ui-color-primary etc.), collapsible panel headers with ▼/▶ buttons, 260px side panels with 4px margin from screen edges, icon placeholders in object list with hover highlight, "Детальней" button in details panel, modal overlay with tabbed detail window, themed scrollbars (8px, green, no arrows)
 
 ### Camera and Labels
-- **OrbitalCameraController** — pan/zoom/rotate/smooth focus (Input System)
+- **OrbitalCameraController** — pan/zoom/rotate/smooth focus (Input System), BlockInput property to suppress input when UI has focus
 - **BodyLabelController** — IMGUI labels with zoom fade
 
 ### World Units and Scaling
