@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 using SpaceSim.Data.Definitions;
@@ -64,6 +65,7 @@ namespace SpaceSim.Rendering.Bootstrap
         private SOIResolver _soiResolver;
         private DockingSystem _dockingSystem;
         private CargoTransferService _cargoTransfer;
+        private StationProductionSystem _productionSystem;
         private SimulationClock _clock;
         private ObjectListPanelController _listPanel;
 
@@ -80,7 +82,7 @@ namespace SpaceSim.Rendering.Bootstrap
                 return;
             }
 
-            // Initialize economy (station storage + ship cargo).
+            // Initialize economy (station storage + ship cargo + production recipes).
             EconomyInitializer.Initialize(_registry);
 
             // Create simulation-side services.
@@ -98,6 +100,10 @@ namespace SpaceSim.Rendering.Bootstrap
             // Cargo transfer service.
             _cargoTransfer = new CargoTransferService(_registry);
             _cargoTransfer.OnCargoTransferred += OnCargoTransferred;
+
+            // Station production system.
+            _productionSystem = new StationProductionSystem(_registry);
+            _productionSystem.OnProductionCycleCompleted += OnProductionCycleCompleted;
 
             _npcScheduler = new NPCShipScheduler(
                 _registry, _shipMovement, () => _clock.CurrentTime,
@@ -138,7 +144,7 @@ namespace SpaceSim.Rendering.Bootstrap
                 $"{_soiResolver.GetStatus()}. " +
                 $"NPC: speed={npcTravelSpeed:F1} minDur={npcMinTravelDuration:F1} idle={npcIdleDelay:F1} " +
                 $"dockWait={npcDockingWaitTime:F1} approach={dockingApproachDuration:F1} " +
-                $"economy=enabled");
+                $"economy=enabled production=enabled");
         }
 
         /// <summary>
@@ -186,6 +192,9 @@ namespace SpaceSim.Rendering.Bootstrap
 
             _npcScheduler?.Update();
 
+            // Update station production (after NPC scheduler so cargo transfers are done first).
+            _productionSystem?.Update(simTime);
+
             // Update SOI tracking for all ships after movement.
             if (_soiResolver != null)
             {
@@ -212,6 +221,10 @@ namespace SpaceSim.Rendering.Bootstrap
             if (_cargoTransfer != null)
             {
                 _cargoTransfer.OnCargoTransferred -= OnCargoTransferred;
+            }
+            if (_productionSystem != null)
+            {
+                _productionSystem.OnProductionCycleCompleted -= OnProductionCycleCompleted;
             }
         }
 
@@ -271,6 +284,30 @@ namespace SpaceSim.Rendering.Bootstrap
             string message = $"Ship {shipName} {verb} {amount:F0} {resource} at {stationName}";
 
             GameDebug.Log(DebugCategory.ECONOMY, message, source: "CargoTransfer");
+        }
+
+        private void OnProductionCycleCompleted(
+            EntityId stationId,
+            ResourceType outputResource,
+            double outputAmount,
+            Dictionary<ResourceType, double> inputsConsumed)
+        {
+            var station = _registry.GetCelestialBody(stationId);
+            string stationName = station?.DisplayName ?? stationId.ToString();
+
+            string inputStr = "";
+            if (inputsConsumed != null && inputsConsumed.Count > 0)
+            {
+                var parts = new List<string>();
+                foreach (var input in inputsConsumed)
+                {
+                    parts.Add($"{input.Value:F0} {input.Key}");
+                }
+                inputStr = $" consumed {string.Join(", ", parts)} and";
+            }
+
+            string message = $"{stationName}{inputStr} produced {outputAmount:F0} {outputResource}";
+            GameDebug.Log(DebugCategory.ECONOMY, message, source: "Production");
         }
 
         private void LogSOITransition(SOITransition t)
@@ -362,5 +399,6 @@ namespace SpaceSim.Rendering.Bootstrap
         public SOIResolver SOI => _soiResolver;
         public DockingSystem Docking => _dockingSystem;
         public CargoTransferService CargoTransfer => _cargoTransfer;
+        public StationProductionSystem Production => _productionSystem;
     }
 }

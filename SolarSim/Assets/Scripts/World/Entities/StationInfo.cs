@@ -45,6 +45,13 @@ namespace SpaceSim.World.Entities
         /// </summary>
         public StationStorage Storage { get; set; }
 
+        /// <summary>
+        /// Production state for this station. Non-null if station has a production recipe.
+        /// Initialized by EconomyInitializer after star system build.
+        /// Tracks cycle progress and stall status.
+        /// </summary>
+        public StationProductionState Production { get; set; }
+
         public StationInfo()
         {
             Kind = StationKind.Orbital;
@@ -52,6 +59,7 @@ namespace SpaceSim.World.Entities
             SurfaceLongitudeDeg = 0.0;
             Docking = null;
             Storage = null;
+            Production = null;
         }
 
         public StationInfo(StationKind kind, double latDeg = 0.0, double lonDeg = 0.0)
@@ -61,6 +69,7 @@ namespace SpaceSim.World.Entities
             SurfaceLongitudeDeg = lonDeg;
             Docking = null;
             Storage = null;
+            Production = null;
         }
 
         /// <summary>
@@ -85,13 +94,17 @@ namespace SpaceSim.World.Entities
         /// <summary>Whether this station has cargo storage.</summary>
         public bool HasStorage => Storage != null;
 
+        /// <summary>Whether this station has active production.</summary>
+        public bool HasProduction => Production != null && Production.HasRecipe;
+
         public override string ToString()
         {
             string dockStr = HasDocking ? $" {Docking}" : "";
             string storageStr = HasStorage ? $" {Storage}" : "";
+            string prodStr = HasProduction ? $" {Production}" : "";
             if (Kind == StationKind.Surface)
-                return $"StationInfo[{Kind} lat={SurfaceLatitudeDeg:F1} lon={SurfaceLongitudeDeg:F1}{dockStr}{storageStr}]";
-            return $"StationInfo[{Kind}{dockStr}{storageStr}]";
+                return $"StationInfo[{Kind} lat={SurfaceLatitudeDeg:F1} lon={SurfaceLongitudeDeg:F1}{dockStr}{storageStr}{prodStr}]";
+            return $"StationInfo[{Kind}{dockStr}{storageStr}{prodStr}]";
         }
     }
 }

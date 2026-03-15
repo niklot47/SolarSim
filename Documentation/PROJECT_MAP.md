@@ -12,7 +12,7 @@ Long-term goals: orbital simulation sandbox, ships and stations, NPC traffic and
 
 ### 1. Simulation
 
-Pure game simulation logic. Time progression, orbital calculations, selection state, star system building, ship movement, NPC scheduling, world position resolution, SOI resolution, docking, economy/cargo transfer.
+Pure game simulation logic. Time progression, orbital calculations, selection state, star system building, ship movement, NPC scheduling, world position resolution, SOI resolution, docking, economy/cargo transfer, station production.
 
 Rules:
 - Must NOT depend on UnityEngine
@@ -33,7 +33,9 @@ Key files:
 - `Scripts/Simulation/Docking/DockingSystem.cs` — docking lifecycle: orbital approach (station-local interpolation), surface approach (planet-local interpolation), dock completion, undocking to appropriate orbit
 - `Scripts/Simulation/Economy/CargoTransferService.cs` — cargo transfer operations between docked ships and stations: LoadFromStation, UnloadToStation, UnloadAll, LoadAny; validates Docked state; fires OnCargoTransferred event
 - `Scripts/Simulation/Economy/StationEconomyConfig.cs` — hardcoded initial resource loadouts per station (by localization key), cargo capacity per ship role
-- `Scripts/Simulation/Economy/EconomyInitializer.cs` — initializes StationStorage on all stations and ShipCargo on all ships after star system build
+- `Scripts/Simulation/Economy/EconomyInitializer.cs` — initializes StationStorage and StationProduction on all stations, ShipCargo on all ships after star system build
+- `Scripts/Simulation/Economy/StationProductionConfig.cs` — hardcoded production recipes per station (by localization key): output resource, input resources, cycle time, output amount
+- `Scripts/Simulation/Economy/StationProductionSystem.cs` — ticks production on all stations: accumulates progress, checks/consumes inputs, produces output, respects storage capacity, pauses on missing inputs or full output; fires OnProductionCycleCompleted event
 
 ### 2. World
 
@@ -54,8 +56,10 @@ Key files:
 - `Scripts/World/Entities/ShipInfo.cs` — ship data: role, key, class, state, route, override position, currentSOIBodyId, Cargo, docking fields (DockedAtStationId, DockedPortId, DockingStartTime, DockingDuration, DockingStartPosition, DockingReferenceBodyId, DockedAtTime)
 - `Scripts/World/Entities/ShipRoute.cs` — travel route: RouteFrame (Global/LocalParent), origin/destination, start/arrival world+local positions, destination orbit params, arrival phase
 - `Scripts/World/Entities/ShipCargo.cs` — ship cargo hold: Dictionary<ResourceType, double>, Capacity, Add/Remove/FreeSpace/TotalUsed/IsEmpty/IsFull
-- `Scripts/World/Entities/StationInfo.cs` — station data: StationKind (Orbital/Surface), surface lat/lon, DockingInfo, Storage
+- `Scripts/World/Entities/StationInfo.cs` — station data: StationKind (Orbital/Surface), surface lat/lon, DockingInfo, Storage, Production
 - `Scripts/World/Entities/StationStorage.cs` — station resource storage: Dictionary<ResourceType, double>, Add/Remove/GetAmount, optional capacity
+- `Scripts/World/Entities/StationProductionRecipe.cs` — production recipe: output resource, output amount per cycle, input resources per cycle, cycle time
+- `Scripts/World/Entities/StationProductionState.cs` — production progress tracker: accumulated progress, last update time, stall status/reason, total cycles completed
 - `Scripts/World/Entities/ResourceType.cs` — enum: Food, Metals, Fuel, Electronics
 - `Scripts/World/Entities/DockingPort.cs` — single docking port: PortId, LocalPosition, OccupiedShipId
 - `Scripts/World/Entities/DockingInfo.cs` — docking capability container: port list, GeneratePorts, RequestPort, ReleasePort
@@ -76,7 +80,7 @@ Rules:
 
 Key files:
 - `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point, DontDestroyOnLoad singleton, creates SimulationClock, sets debug export directory, updates debug context each frame
-- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services (WorldPositionResolver, SOIResolver, DockingSystem, ShipMovementSystem, NPCShipScheduler, CargoTransferService), initializes economy, registers debug snapshot providers, loads star system, ticks simulation, manages transit parenting, logs events via GameDebug, syncs NPC/docking params from Inspector
+- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services (WorldPositionResolver, SOIResolver, DockingSystem, ShipMovementSystem, NPCShipScheduler, CargoTransferService, StationProductionSystem), initializes economy, registers debug snapshot providers, loads star system, ticks simulation, manages transit parenting, logs events via GameDebug, syncs NPC/docking params from Inspector
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions (bodies + ships + stations + docking ports) to pure build data, calls StarSystemBuilder
 - `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — creates/updates scene visuals (spheres for bodies, cubes for stations), manages orbit lines, delegates all position resolution to WorldPositionResolver
 - `Scripts/Rendering/Planets/CelestialBodyView.cs` — body visual representation with role-based ship colors, station kind colors (cyan orbital, orange surface), station scale ×⅓
@@ -97,11 +101,11 @@ Rules:
 
 Key files:
 - `Scripts/UI/Panels/ObjectListPanelController.cs` — hierarchical body list with selection sync, supports dynamic refresh
-- `Scripts/UI/Panels/ObjectDetailsPanelController.cs` — body properties, ship state/destination/SOI body/docking info/cargo contents, station kind/attachment/docking ports/occupancy/storage contents
+- `Scripts/UI/Panels/ObjectDetailsPanelController.cs` — body properties, ship state/destination/SOI body/docking info/cargo contents, station kind/attachment/docking ports/occupancy/storage contents/production info
 - `Scripts/UI/Panels/TimeControlsPanelController.cs` — pause + x1/x10/x100 speed buttons
-- `Scripts/UI/Localization/UIStrings.cs` — centralized Russian string provider (body types, ship roles, ship states incl. docking states, station kinds, attachment modes, SOI labels, docking labels, resource names, cargo/storage labels)
-- `UI/UXML/OrbitalSandboxScreen.uxml` — root layout with left panel, viewport, right panel, time strip, station/SOI/docking/cargo/storage detail rows
-- `UI/USS/OrbitalSandboxScreen.uss` — styling
+- `Scripts/UI/Localization/UIStrings.cs` — centralized Russian string provider (body types, ship roles, ship states incl. docking states, station kinds, attachment modes, SOI labels, docking labels, resource names full + short, cargo/storage/production labels)
+- `UI/UXML/OrbitalSandboxScreen.uxml` — root layout with left panel, viewport, right panel, time strip, station/SOI/docking/cargo/storage/production detail rows
+- `UI/USS/OrbitalSandboxScreen.uss` — styling (260px panels, 12px font, word-wrap for values)
 
 ### 5. Data
 
@@ -192,9 +196,13 @@ Ships are CelestialBody instances with `BodyType == Ship` and non-null ShipInfo.
 
 Stations are CelestialBody instances with `BodyType == Station` and non-null StationInfo. Distinguished by AttachmentMode: Orbit (orbital) or Surface (surface).
 
-**StationInfo**: StationKind (Orbital/Surface), SurfaceLatitudeDeg, SurfaceLongitudeDeg, DockingInfo (nullable), Storage (nullable).
+**StationInfo**: StationKind (Orbital/Surface), SurfaceLatitudeDeg, SurfaceLongitudeDeg, DockingInfo (nullable), Storage (nullable), Production (nullable).
 
 **StationStorage**: Dictionary<ResourceType, double>, CapacityPerResource, Add, Remove, GetAmount, GetAll, GetNonEmptyTypes.
+
+**StationProductionRecipe**: OutputResource, OutputAmountPerCycle, InputsPerCycle (Dictionary<ResourceType, double>), CycleTime. HasInputs property.
+
+**StationProductionState**: Recipe, Progress (accumulated sim-seconds), LastUpdateTime, IsStalled, StallReason, TotalCyclesCompleted. ProgressFraction property.
 
 **DockingInfo**: List of DockingPort, GeneratePorts(), RequestPort(), ReleasePort(), GetPortForShip(), TotalPorts, OccupiedCount, FreeCount, HasFreePort.
 
@@ -209,6 +217,16 @@ Bodies with non-null SOIRadius define a sphere of influence. SOIResolver determi
 **ResourceType**: Food, Metals, Fuel, Electronics.
 
 Stations have StationStorage initialized by EconomyInitializer with resources defined in StationEconomyConfig. Ships have ShipCargo initialized with capacity based on role. CargoTransferService handles all transfers, enforcing docking requirement and capacity limits. NPCShipScheduler drives trader behavior: unload all → load any → depart.
+
+### Production Model
+
+Stations with production recipes automatically produce resources over time. StationProductionSystem ticks each station every simulation frame. Production pauses if inputs are missing or output storage is full. Recipes are defined in StationProductionConfig (hardcoded, keyed by station localization key).
+
+Production chain (sample system):
+- Терра-1: produces 10 Food / 5s (basic, no inputs)
+- Орбита-1: consumes 8 Food → produces 5 Electronics / 8s
+- Арес-1: consumes 4 Electronics → produces 8 Metals / 7s
+- Фобос: consumes 6 Metals → produces 12 Fuel / 6s
 
 ------------------------------------------------------------------------
 
@@ -235,10 +253,23 @@ StarSystemBuilder.Build()
     v
 EconomyInitializer.Initialize()
     Phase 6: create StationStorage on all stations (initial resources from StationEconomyConfig)
-    Phase 7: create ShipCargo on all ships (capacity from StationEconomyConfig)
+    Phase 7: create StationProductionState on all stations (recipes from StationProductionConfig)
+    Phase 8: create ShipCargo on all ships (capacity from StationEconomyConfig)
     |
     v
-WorldRegistry + WorldPositionResolver + SOIResolver + DockingSystem + CargoTransferService + OrbitalMapRenderer + UI
+WorldRegistry + WorldPositionResolver + SOIResolver + DockingSystem + CargoTransferService + StationProductionSystem + OrbitalMapRenderer + UI
+```
+
+------------------------------------------------------------------------
+
+## Simulation Tick Order
+
+```
+ShipMovementSystem.Update()
+DockingSystem.Update()
+NPCShipScheduler.Update()
+StationProductionSystem.Update()
+SOIResolver.UpdateAllShips()
 ```
 
 ------------------------------------------------------------------------
@@ -321,7 +352,7 @@ WorldRegistry + WorldPositionResolver + SOIResolver + DockingSystem + CargoTrans
 
 ### SOI Tracking Flow
 
-1. After ShipMovementSystem.Update(), DockingSystem.Update(), and NPCShipScheduler.Update()
+1. After ShipMovementSystem.Update(), DockingSystem.Update(), NPCShipScheduler.Update(), StationProductionSystem.Update()
 2. SOIResolver.UpdateAllShips(simTime) checks all ships against all SOI bodies
 3. For each ship: resolve world position, find deepest containing SOI
 4. If dominant body changed: record SOITransition, update ShipInfo.CurrentSOIBodyId
@@ -389,20 +420,20 @@ Station cubes: visual scale ×⅓.
 
 ## Sample Star System Content
 
-| Body | Type | Parent | Orbit | SOI | Docking | Economy |
-|---|---|---|---|---|---|---|
-| Sol | Star | — | — | 1000 | — | — |
-| Terra | Planet | Sol | r=150, P=120 | 60 | — | — |
-| Ares | Planet | Sol | r=275, P=240 | 40 | — | — |
-| Venus | Planet | Sol | r=75, P=80 | 30 | — | — |
-| Luna | Moon | Terra | r=25, P=20 | 8 | — | — |
-| Станция «Орбита-1» | Orbital Station | Terra | r=8, P=18 | — | 3 ports | Electronics 200, Fuel 60 |
-| База «Терра-1» | Surface Station | Terra | lat=30° lon=45° | — | 2 ports | Food 200, Fuel 100 |
-| Станция «Фобос» | Orbital Station | Ares | r=6, P=14 | — | 2 ports | Fuel 200, Metals 60 |
-| База «Арес-1» | Surface Station | Ares | lat=-15° lon=120° | — | 2 ports | Metals 200, Fuel 100 |
-| Корвет «Аврора» | Ship (Player) | Terra | r=3, P=12 | — | — | Cargo cap 100 |
-| Транспорт «Карго-7» | Ship (Trader) | Terra | r=4, P=15 | — | — | Cargo cap 100 |
-| Патруль «Страж-3» | Ship (Patrol) | Ares | r=3, P=10 | — | — | Cargo cap 25 |
+| Body | Type | Parent | Orbit | SOI | Docking | Economy | Production |
+|---|---|---|---|---|---|---|---|
+| Sol | Star | — | — | 1000 | — | — | — |
+| Terra | Planet | Sol | r=150, P=120 | 60 | — | — | — |
+| Ares | Planet | Sol | r=275, P=240 | 40 | — | — | — |
+| Venus | Planet | Sol | r=75, P=80 | 30 | — | — | — |
+| Luna | Moon | Terra | r=25, P=20 | 8 | — | — | — |
+| Станция «Орбита-1» | Orbital Station | Terra | r=8, P=18 | — | 3 ports | Electronics 200, Fuel 60 | Food→Electronics (8s) |
+| База «Терра-1» | Surface Station | Terra | lat=30° lon=45° | — | 2 ports | Food 200, Fuel 100 | →Food basic (5s) |
+| Станция «Фобос» | Orbital Station | Ares | r=6, P=14 | — | 2 ports | Fuel 200, Metals 60 | Metals→Fuel (6s) |
+| База «Арес-1» | Surface Station | Ares | lat=-15° lon=120° | — | 2 ports | Metals 200, Fuel 100 | Electronics→Metals (7s) |
+| Корвет «Аврора» | Ship (Player) | Terra | r=3, P=12 | — | — | Cargo cap 100 | — |
+| Транспорт «Карго-7» | Ship (Trader) | Terra | r=4, P=15 | — | — | Cargo cap 100 | — |
+| Патруль «Страж-3» | Ship (Patrol) | Ares | r=3, P=10 | — | — | Cargo cap 25 | — |
 
 ------------------------------------------------------------------------
 
@@ -414,7 +445,7 @@ OrbitalSandbox (Scene)
   Directional Light
   GameBootstrap              — creates SimulationClock, sets debug export dir, calls coordinator.Setup()
   OrbitalMapRenderer         — creates body views + orbit lines, delegates to WorldPositionResolver
-  OrbitalSandboxCoordinator  — wires all services, ticks simulation + SOI + docking + economy
+  OrbitalSandboxCoordinator  — wires all services, ticks simulation + SOI + docking + economy + production
     Inspector params: npcTravelSpeed, npcMinTravelDuration, npcIdleDelay,
                       npcDockingWaitTime, dockingApproachDuration
     (runtime) WorldPositionResolver
@@ -423,6 +454,7 @@ OrbitalSandbox (Scene)
     (runtime) ShipMovementSystem
     (runtime) NPCShipScheduler
     (runtime) CargoTransferService
+    (runtime) StationProductionSystem
     (runtime) SelectionBridge
     (runtime) BodyClickHandler
     (runtime) BodyLabelController
@@ -451,9 +483,10 @@ OrbitalSandbox (Scene)
 - SOI foundation: SOI radius on bodies, SOI resolver, ship SOI tracking, transition detection
 - Docking foundation: docking ports on orbital and surface stations, approach/dock/undock lifecycle, NPC auto-dock/undock, surface station arrival via parent body orbit, UI display of docking state
 - Economy foundation: resource types, station storage, ship cargo, cargo transfer service, economy initializer, NPC trader cargo loop, UI display of cargo/storage
+- Station production: recipes (output/input/cycle time), production state tracking, production system ticking each frame, stall on missing inputs or full output, auto-resume, debug logging via event, UI display of production info (output rate, inputs, stall status), production chain across 4 stations
 
 ### Deferred
-Prices/money, production chains, contracts, factions, AI behavior, advanced navigation, orbital transfers, combat, ship modules, save/load, procedural planets, elliptical orbits, inclined orbits, LOD system, SOI visualization, SOI-based reparenting, patched conics, docking animations, station interiors, player trading UI.
+Prices/money, dynamic supply/demand, market simulation, player trading UI, complex factories, economic AI, contracts, factions, AI behavior, advanced navigation, orbital transfers, combat, ship modules, save/load, procedural planets, elliptical orbits, inclined orbits, LOD system, SOI visualization, SOI-based reparenting, patched conics, docking animations, station interiors.
 
 ------------------------------------------------------------------------
 

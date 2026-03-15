@@ -205,6 +205,16 @@
                         <ui:Label name="details-storage-value" class="details-value" />
                     </ui:VisualElement>
                 </ui:VisualElement>
+
+                <!-- Station: Production -->
+                <ui:VisualElement name="details-production-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-production-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-production-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

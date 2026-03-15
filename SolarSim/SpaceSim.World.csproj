@@ -55,6 +55,7 @@
     <Compile Include="Assets\Scripts\World\Entities\DockingInfo.cs" />
     <Compile Include="Assets\Scripts\World\Entities\StarSystem.cs" />
     <Compile Include="Assets\Scripts\World\Entities\ResourceType.cs" />
+    <Compile Include="Assets\Scripts\World\Entities\StationProductionRecipe.cs" />
     <Compile Include="Assets\Scripts\World\Entities\ShipRole.cs" />
     <Compile Include="Assets\Scripts\World\Entities\StationStorage.cs" />
     <Compile Include="Assets\Scripts\World\Entities\ShipCargo.cs" />
@@ -67,6 +68,7 @@
     <Compile Include="Assets\Scripts\World\ValueTypes\OrbitDefinition.cs" />
     <Compile Include="Assets\Scripts\World\Entities\CelestialBody.cs" />
     <Compile Include="Assets\Scripts\World\ValueTypes\SpinDefinition.cs" />
+    <Compile Include="Assets\Scripts\World\Entities\StationProductionState.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Scripts\World\SpaceSim.World.asmdef" />

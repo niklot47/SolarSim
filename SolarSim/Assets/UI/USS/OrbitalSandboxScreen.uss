@@ -8,8 +8,8 @@
 /* --- Side panels --- */
 
 .side-panel {
-    width: 240px;
-    min-width: 180px;
+    width: 260px;
+    min-width: 200px;
     background-color: rgba(20, 20, 30, 0.85);
     padding: 8px;
     flex-shrink: 0;
@@ -67,7 +67,7 @@
 }
 
 .details-cell-label {
-    flex-basis: 40%;
+    flex-basis: 35%;
     flex-shrink: 0;
     flex-grow: 0;
     overflow: hidden;
@@ -75,7 +75,7 @@
 }
 
 .details-cell-value {
-    flex-basis: 60%;
+    flex-basis: 65%;
     flex-shrink: 1;
     flex-grow: 1;
     overflow: hidden;
@@ -83,7 +83,7 @@
 }
 
 .details-label {
-    font-size: 13px;
+    font-size: 12px;
     color: rgb(150, 150, 170);
     -unity-text-align: middle-left;
     overflow: hidden;
@@ -92,12 +92,11 @@
 }
 
 .details-value {
-    font-size: 13px;
+    font-size: 12px;
     color: rgb(220, 220, 240);
-    -unity-text-align: middle-right;
+    -unity-text-align: middle-left;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
 }
 
 .no-selection-text {

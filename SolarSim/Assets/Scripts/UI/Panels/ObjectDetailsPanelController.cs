@@ -18,7 +18,7 @@ namespace SpaceSim.UI.Panels
     /// Displays station-specific fields when a station is selected.
     /// Shows SOI info for bodies and dominant body for ships.
     /// Shows docking info for ships and stations.
-    /// Shows cargo contents for ships and storage for stations.
+    /// Shows cargo contents for ships and storage/production for stations.
     /// </summary>
     public class ObjectDetailsPanelController : MonoBehaviour
     {
@@ -72,13 +72,17 @@ namespace SpaceSim.UI.Panels
         private VisualElement _stationStorageRow;
         private Label _stationStorageValue;
 
+        // Station production UI elements.
+        private VisualElement _stationProductionRow;
+        private Label _stationProductionValue;
+
         // SOI radius row (for non-ship bodies with SOI).
         private VisualElement _soiRadiusRow;
         private Label _soiRadiusValue;
 
         private EntityId _currentSelectionId = EntityId.None;
 
-        // Reusable StringBuilder for cargo/storage formatting.
+        // Reusable StringBuilder for cargo/storage/production formatting.
         private readonly StringBuilder _sb = new StringBuilder();
 
         public void Initialize(WorldRegistry registry, SelectionService selectionService)
@@ -172,6 +176,11 @@ namespace SpaceSim.UI.Panels
             _stationStorageRow = _root.Q<VisualElement>("details-storage-row");
             _stationStorageValue = _root.Q<Label>("details-storage-value");
             SetLabel(_root, "details-storage-label", UIStrings.Get("panel.details.storage"));
+
+            // Station production row.
+            _stationProductionRow = _root.Q<VisualElement>("details-production-row");
+            _stationProductionValue = _root.Q<Label>("details-production-value");
+            SetLabel(_root, "details-production-label", UIStrings.Get("panel.details.production"));
 
             // SOI radius row (for bodies).
             _soiRadiusRow = _root.Q<VisualElement>("details-soiradius-row");
@@ -275,6 +284,7 @@ namespace SpaceSim.UI.Panels
             SetRowVisible(_stationPortsRow, false);
             SetRowVisible(_stationOccupiedRow, false);
             SetRowVisible(_stationStorageRow, false);
+            SetRowVisible(_stationProductionRow, false);
 
             if (isStation)
             {
@@ -377,8 +387,20 @@ namespace SpaceSim.UI.Panels
             {
                 _stationStorageValue.text = FormatStorage(body.StationInfo.Storage);
             }
+
+            // Production display.
+            bool hasProduction = body.StationInfo.HasProduction;
+            SetRowVisible(_stationProductionRow, hasProduction);
+            if (hasProduction && _stationProductionValue != null)
+            {
+                _stationProductionValue.text = FormatProduction(body.StationInfo.Production);
+            }
         }
 
+        /// <summary>
+        /// Format cargo using short resource abbreviations.
+        /// Example: "Еда: 50, Мет: 30 [80/100]"
+        /// </summary>
         private string FormatCargo(ShipCargo cargo)
         {
             if (cargo == null || cargo.IsEmpty)
@@ -388,16 +410,21 @@ namespace SpaceSim.UI.Panels
             bool first = true;
             foreach (var type in cargo.GetNonEmptyTypes())
             {
-                if (!first) _sb.Append(", ");
-                _sb.Append(UIStrings.GetResourceName(type.ToString()));
+                if (!first) _sb.Append('\n');
+                _sb.Append(UIStrings.GetResourceShortName(type.ToString()));
                 _sb.Append(": ");
                 _sb.Append(cargo.GetAmount(type).ToString("F0"));
                 first = false;
             }
-            _sb.Append($" [{cargo.TotalUsed:F0}/{cargo.Capacity:F0}]");
+            _sb.Append($"\n[{cargo.TotalUsed:F0}/{cargo.Capacity:F0}]");
             return _sb.ToString();
         }
 
+        /// <summary>
+        /// Format storage using short resource abbreviations.
+        /// Each resource on its own line.
+        /// Example: "Еда: 200\nТопл: 100"
+        /// </summary>
         private string FormatStorage(StationStorage storage)
         {
             if (storage == null)
@@ -408,8 +435,8 @@ namespace SpaceSim.UI.Panels
             bool any = false;
             foreach (var type in storage.GetNonEmptyTypes())
             {
-                if (!first) _sb.Append(", ");
-                _sb.Append(UIStrings.GetResourceName(type.ToString()));
+                if (!first) _sb.Append('\n');
+                _sb.Append(UIStrings.GetResourceShortName(type.ToString()));
                 _sb.Append(": ");
                 _sb.Append(storage.GetAmount(type).ToString("F0"));
                 first = false;
@@ -418,6 +445,48 @@ namespace SpaceSim.UI.Panels
 
             if (!any)
                 return UIStrings.Get("panel.details.storage_empty");
+
+            return _sb.ToString();
+        }
+
+        /// <summary>
+        /// Format production info compactly.
+        /// Basic producer: "Еда +2.0/с [75%]"
+        /// With inputs: "Элек +0.6/с\n← Еда -1.0/с\n[Остановлено]"
+        /// </summary>
+        private string FormatProduction(StationProductionState prod)
+        {
+            if (prod == null || !prod.HasRecipe)
+                return UIStrings.Get("panel.details.production_none");
+
+            var recipe = prod.Recipe;
+            _sb.Clear();
+
+            // Output info.
+            string outputName = UIStrings.GetResourceShortName(recipe.OutputResource.ToString());
+            double rate = recipe.OutputAmountPerCycle / recipe.CycleTime;
+            _sb.Append($"{outputName} +{rate:F1}/c");
+
+            // Input info on next line.
+            if (recipe.HasInputs)
+            {
+                foreach (var input in recipe.InputsPerCycle)
+                {
+                    string inputName = UIStrings.GetResourceShortName(input.Key.ToString());
+                    double inputRate = input.Value / recipe.CycleTime;
+                    _sb.Append($"\n\u2190 {inputName} -{inputRate:F1}/c");
+                }
+            }
+
+            // Status on next line.
+            if (prod.IsStalled)
+            {
+                _sb.Append($"\n[{UIStrings.Get("panel.details.production_stalled")}]");
+            }
+            else
+            {
+                _sb.Append($"\n[{prod.ProgressFraction:P0}]");
+            }
 
             return _sb.ToString();
         }

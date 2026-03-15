@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 10 — Economy Foundation + Full Debug System.
+Last updated after: Step 11 — Station Production / Consumption Foundation.
 
 ------------------------------------------------------------------------
 
@@ -54,7 +54,7 @@ Last updated after: Step 10 — Economy Foundation + Full Debug System.
 
 ### Stations Foundation
 - Two station kinds: **Orbital** (AttachmentMode.Orbit) and **Surface** (AttachmentMode.Surface)
-- **StationInfo** — station metadata: StationKind, SurfaceLatitudeDeg, SurfaceLongitudeDeg, DockingInfo, Storage
+- **StationInfo** — station metadata: StationKind, SurfaceLatitudeDeg, SurfaceLongitudeDeg, DockingInfo, Storage, Production
 - **StationDefinition** — Inspector-authored station data (includes DockingPortCount)
 - Orbital stations: orbit + optional spin, orbit lines, cube visual (cyan), docking ports
 - Surface stations: fixed position on parent surface via lat/lon, no orbit line, cube visual (orange), docking ports
@@ -87,16 +87,41 @@ Last updated after: Step 10 — Economy Foundation + Full Debug System.
 - **ShipCargo** — dictionary-based cargo hold on ships with capacity enforcement (Add/Remove/FreeSpace/TotalUsed)
 - **CargoTransferService** — pure C# service: LoadFromStation, UnloadToStation, UnloadAll, LoadAny; validates Docked state; fires OnCargoTransferred event
 - **StationEconomyConfig** — hardcoded initial resource loadouts per station (by localization key) and cargo capacity per ship role
-- **EconomyInitializer** — called after star system build; creates StationStorage + ShipCargo on all entities
+- **EconomyInitializer** — called after star system build; creates StationStorage + StationProduction + ShipCargo on all entities
 - **NPCShipScheduler trader behavior**:
   - When docked: unload all cargo → load available resources from station
   - Cargo operations happen once per docking (`_cargoHandled` set prevents repeated ops)
   - Traders prefer station destinations (`_stationCandidates` list)
   - After undock: `_pendingDeparture` → immediate departure to another station
-- **UI display**: ObjectDetailsPanelController shows ship cargo and station storage as text rows
+- **UI display**: ObjectDetailsPanelController shows ship cargo and station storage as multiline text rows with short resource names
 - **Debug logging**: all cargo transfers logged via GameDebug with category ECONOMY
 - **Initial station resources**: Терра-1 → Food+Fuel, Орбита-1 → Electronics+Fuel, Арес-1 → Metals+Fuel, Фобос → Fuel+Metals
 - **Verified by debug bundle**: total resources conserved across transfers (1120 total at start), no invariant violations
+
+### Station Production Foundation
+- **StationProductionRecipe** — pure data model in World layer: OutputResource, OutputAmountPerCycle, InputsPerCycle (dict), CycleTime
+- **StationProductionState** — progress tracker in World layer: Progress (accumulated sim-seconds), LastUpdateTime, IsStalled, StallReason, TotalCyclesCompleted, ProgressFraction
+- **StationProductionConfig** — hardcoded recipes per station localization key in Simulation layer
+- **StationProductionSystem** — pure C# simulation service in Simulation layer
+  - Accumulates progress with simulation delta time each tick
+  - Checks input resource availability before cycle completion
+  - Consumes inputs atomically per completed cycle
+  - Adds output resource to StationStorage
+  - Pauses (stalls) if required inputs missing in storage
+  - Pauses if output storage would exceed capacity
+  - Resumes automatically when conditions are met
+  - Fires `OnProductionCycleCompleted` event (coordinator logs via GameDebug, category ECONOMY)
+- **Production chain** (sample system):
+  - Терра-1: produces 10 Food / 5s (basic, no inputs)
+  - Орбита-1: consumes 8 Food → produces 5 Electronics / 8s
+  - Арес-1: consumes 4 Electronics → produces 8 Metals / 7s
+  - Фобос: consumes 6 Metals → produces 12 Fuel / 6s
+- **StationInfo.Production** — nullable field, initialized by EconomyInitializer from StationProductionConfig
+- **UI display**: ObjectDetailsPanelController shows production info with output rate, input rate, stall status
+- **UIStrings**: short resource names (Еда, Мет., Топл., Элек.) and production labels (Произв., Стоп)
+- **OrbitalSandboxScreen.uxml**: details-production-row for station production display
+- **Integration**: StationProductionSystem ticked after NPCShipScheduler, before SOIResolver
+- **Verified by debug bundle**: production cycles logged, resources produced/consumed correctly, 0 errors, 0 invariant violations
 
 ### Selection and Interaction
 - **SelectionService** — pure C# selection state with events
@@ -105,10 +130,10 @@ Last updated after: Step 10 — Economy Foundation + Full Debug System.
 
 ### UI Panels
 - **ObjectListPanelController** — hierarchical body list, dynamic refresh on hierarchy changes
-- **ObjectDetailsPanelController** — body properties, ship role/class/state/destination/SOI body/docking info (docked at, port), station kind/attachment/docking ports/occupancy, SOI radius for bodies, ship cargo contents, station storage contents
+- **ObjectDetailsPanelController** — body properties, ship role/class/state/destination/SOI body/docking info (docked at, port), station kind/attachment/docking ports/occupancy, SOI radius for bodies, ship cargo contents, station storage contents, station production info (output rate, inputs, stall status)
 - **TimeControlsPanelController** — pause + x1/x10/x100
-- **UIStrings** — Russian strings: body types, ship roles, ship states, station kinds, attachment modes, SOI labels, docking labels, resource names (Продовольствие, Металлы, Топливо, Электроника), cargo/storage labels (Груз, Склад)
-- **OrbitalSandboxScreen.uxml/.uss** — root layout with station/SOI/docking/cargo/storage detail rows
+- **UIStrings** — Russian strings: body types, ship roles, ship states, station kinds, attachment modes, SOI labels, docking labels, resource names full (Продовольствие, Металлы, Топливо, Электроника) + short (Еда, Мет., Топл., Элек.), cargo/storage/production labels
+- **OrbitalSandboxScreen.uxml/.uss** — root layout with 260px panels, 12px font, word-wrap for values, station/SOI/docking/cargo/storage/production detail rows
 
 ### Camera and Labels
 - **OrbitalCameraController** — pan/zoom/rotate/smooth focus (Input System)
@@ -159,7 +184,7 @@ Last updated after: Step 10 — Economy Foundation + Full Debug System.
 
 ### Bootstrap and Coordination
 - **GameBootstrap** — creates clock, initializes debug (export dir, context updates), calls coordinator
-- **OrbitalSandboxCoordinator** — loads system, initializes economy, creates and wires all services (incl. CargoTransferService), registers debug snapshot providers, ticks simulation in order: ShipMovementSystem → DockingSystem → NPCShipScheduler → SOIResolver, logs events via GameDebug, syncs Inspector params
+- **OrbitalSandboxCoordinator** — loads system, initializes economy, creates and wires all services (incl. CargoTransferService, StationProductionSystem), registers debug snapshot providers, ticks simulation in order: ShipMovementSystem → DockingSystem → NPCShipScheduler → StationProductionSystem → SOIResolver, logs events via GameDebug (production, cargo, ships, SOI), syncs Inspector params
 
 ------------------------------------------------------------------------
 
@@ -179,11 +204,11 @@ Last updated after: Step 10 — Economy Foundation + Full Debug System.
 
 **Why acceptable now:**
 - Stations share hierarchy, orbits, rendering, selection
-- StationInfo + DockingInfo + StationStorage keeps station-specific data contained
-- Both orbital and surface stations support docking and storage
+- StationInfo + DockingInfo + StationStorage + StationProductionState keeps station-specific data contained
+- Both orbital and surface stations support docking, storage, and production
 
 **When to change:**
-- If stations gain complex state (production chains, refueling services, complex inventories)
+- If stations gain complex state (multi-recipe factories, refueling services, complex inventories)
 
 ### Transit parenting to root star
 
@@ -205,6 +230,10 @@ Ports evenly spaced in XZ plane at 0.15 Mm from station center.
 
 StationEconomyConfig maps station localization keys to initial resources. Future: move to ScriptableObjects or JSON.
 
+### Production recipes are hardcoded
+
+StationProductionConfig maps station localization keys to recipes. Future: move to ScriptableObjects or data-driven config.
+
 ### No prices or money
 
 Cargo transfer is free and instant. Foundation only — pricing deferred.
@@ -220,7 +249,11 @@ Traders pick a random different station. No demand/supply-driven routing yet.
 | System | Notes |
 |---|---|
 | Prices / Money | Currency, buy/sell prices, supply/demand |
-| Production chains | Stations producing/consuming resources over time |
+| Dynamic supply/demand | Production creates natural supply; demand routing deferred |
+| Market simulation | Price fluctuation based on supply/demand |
+| Player trading UI | Buy/sell interface for player at docked station |
+| Complex factories | Multi-input, multi-output production |
+| Economic AI | Smart trader routing based on prices/demand |
 | Contracts | Task definition, assignment |
 | Factions | Entities, relationships, territory |
 | AI behavior | Autonomous ship decisions beyond simple scheduling |
@@ -238,7 +271,6 @@ Traders pick a random different station. No demand/supply-driven routing yet.
 | Docking animations | Visual effects for approach/dock/undock |
 | Station interiors | Interior view when docked |
 | Fuel/repair | Station services requiring docking |
-| Player trading UI | Buy/sell interface for player at docked station |
 
 ------------------------------------------------------------------------
 
@@ -249,6 +281,9 @@ Traders pick a random different station. No demand/supply-driven routing yet.
 - WorldPositionResolver is pure C# — single source of truth (incl. docked positions)
 - DockingSystem is pure C# — uses position resolver delegate, no rendering dependency
 - CargoTransferService is pure C# — validates docking state, fires events
+- StationProductionSystem is pure C# — uses WorldRegistry and StationStorage only, fires OnProductionCycleCompleted event (coordinator handles logging)
+- StationProductionRecipe and StationProductionState are pure data in World layer
+- StationProductionConfig is pure C# in Simulation layer
 - EconomyInitializer is pure C# — no Unity dependency
 - SOIResolver is pure C# — uses WorldPositionResolver
 - ShipMovementSystem is pure C# — surface station logic is internal to simulation
@@ -272,6 +307,8 @@ Traders pick a random different station. No demand/supply-driven routing yet.
 - DebugExportUtility uses manual JSON builder (no third-party JSON library)
 - Debug JSON locale issue: double formatting uses system locale (comma vs dot) — needs CultureInfo.InvariantCulture fix
 - Trader NPC route selection is random among stations — can ping-pong between same two stations
+- Production recipes are hardcoded in StationProductionConfig (should be ScriptableObjects)
+- StationStorage has no per-resource capacity limit (CapacityPerResource defaults to 0 = unlimited)
 
 ------------------------------------------------------------------------
 
@@ -279,12 +316,12 @@ Traders pick a random different station. No demand/supply-driven routing yet.
 
 **Option A: Prices & Money** — add currency, buy/sell prices at stations, trader profit motive. Creates real economic incentive loop.
 
-**Option B: Production & Consumption** — stations produce/consume resources over time. Creates supply/demand dynamics.
+**Option B: Player Trading UI** — buy/sell interface when player ship is docked. First player interaction with economy.
 
-**Option C: Player Trading UI** — buy/sell interface when player ship is docked. First player interaction with economy.
+**Option C: Storage Capacity Limits** — per-resource caps on stations to create real scarcity and trade pressure.
 
 **Option D: More Ships / Civilian Traffic** — more trader ships, civilian behavior, busier sandbox with visible trade traffic.
 
-**Option E: SOI-Aware Navigation** — use SOI data to improve route frame selection, capture/escape transitions.
+**Option E: Demand-Driven Routing** — traders prefer stations that need their cargo (stations consuming inputs).
 
-Recommendation: **Option A or C** — adding prices and a player trading UI would close the first gameplay loop: player docks → buys low → flies to another station → sells high.
+Recommendation: **Option B or E** — player trading UI closes the first gameplay loop; demand-driven routing makes the production chain visibly useful as traders intelligently carry Food to Орбита-1, Electronics to Арес-1, etc.

@@ -4,15 +4,16 @@ using SpaceSim.World.Systems;
 namespace SpaceSim.Simulation.Economy
 {
     /// <summary>
-    /// Initializes economy data (station storage, ship cargo) after star system is built.
+    /// Initializes economy data (station storage, ship cargo, station production)
+    /// after star system is built.
     /// Call once after StarSystemBuilder.Build() or SampleStarSystemFactory.Create().
     /// Pure C# — no Unity dependency.
     /// </summary>
     public static class EconomyInitializer
     {
         /// <summary>
-        /// Initialize storage on all stations and cargo on all ships in the registry.
-        /// Safe to call multiple times — skips entities that already have storage/cargo.
+        /// Initialize storage, production, and cargo on all entities in the registry.
+        /// Safe to call multiple times — skips entities that already have storage/cargo/production.
         /// </summary>
         public static void Initialize(WorldRegistry registry)
         {
@@ -23,6 +24,7 @@ namespace SpaceSim.Simulation.Economy
                 if (body.BodyType == CelestialBodyType.Station && body.StationInfo != null)
                 {
                     InitializeStationStorage(body);
+                    InitializeStationProduction(body);
                 }
                 else if (body.BodyType == CelestialBodyType.Ship && body.ShipInfo != null)
                 {
@@ -46,6 +48,19 @@ namespace SpaceSim.Simulation.Economy
                 {
                     station.StationInfo.Storage.SetAmount(kvp.Key, kvp.Value);
                 }
+            }
+        }
+
+        private static void InitializeStationProduction(CelestialBody station)
+        {
+            if (station.StationInfo.Production != null) return; // Already initialized.
+
+            var recipe = StationProductionConfig.GetRecipe(
+                station.LocalizationKeyName ?? "");
+
+            if (recipe != null)
+            {
+                station.StationInfo.Production = new StationProductionState(recipe, 0.0);
             }
         }
 

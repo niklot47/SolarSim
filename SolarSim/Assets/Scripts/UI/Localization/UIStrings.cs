@@ -25,17 +25,17 @@ namespace SpaceSim.UI.Localization
             ["panel.details.ship_class"] = "\u041a\u043b\u0430\u0441\u0441",
             ["panel.details.state"] = "\u0421\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435",
             ["panel.details.destination"] = "\u041a\u0443\u0440\u0441",
-            ["panel.details.soi_body"] = "\u0417\u043e\u043d\u0430 \u0432\u043b\u0438\u044f\u043d\u0438\u044f",
+            ["panel.details.soi_body"] = "\u0417\u043e\u043d\u0430 \u0432\u043b.",
             ["panel.details.none"] = "\u2014",
             ["panel.details.no_selection"] = "\u041d\u0438\u0447\u0435\u0433\u043e \u043d\u0435 \u0432\u044b\u0431\u0440\u0430\u043d\u043e",
-            ["panel.details.station_kind"] = "\u0422\u0438\u043f \u0441\u0442\u0430\u043d\u0446\u0438\u0438",
+            ["panel.details.station_kind"] = "\u0422\u0438\u043f \u0441\u0442.",
             ["panel.details.attachment"] = "\u041a\u0440\u0435\u043f\u043b\u0435\u043d\u0438\u0435",
             ["panel.details.soi_radius"] = "\u0420\u0430\u0434\u0438\u0443\u0441 SOI",
 
             // Docking details.
-            ["panel.details.docked_at"] = "\u041f\u0440\u0438\u0441\u0442\u044b\u043a\u043e\u0432\u0430\u043d",
+            ["panel.details.docked_at"] = "\u041f\u0440\u0438\u0441\u0442\u044b\u043a.",
             ["panel.details.docking_port"] = "\u041f\u043e\u0440\u0442",
-            ["panel.details.docking_ports"] = "\u0421\u0442\u044b\u043a\u043e\u0432\u043e\u0447\u043d\u044b\u0435 \u043f\u043e\u0440\u0442\u044b",
+            ["panel.details.docking_ports"] = "\u041f\u043e\u0440\u0442\u044b",
             ["panel.details.ports_occupied"] = "\u0417\u0430\u043d\u044f\u0442\u043e",
 
             // Economy / Cargo details.
@@ -44,11 +44,26 @@ namespace SpaceSim.UI.Localization
             ["panel.details.storage"] = "\u0421\u043a\u043b\u0430\u0434",
             ["panel.details.storage_empty"] = "\u041f\u0443\u0441\u0442\u043e",
 
-            // Resource type names.
+            // Production details.
+            ["panel.details.production"] = "\u041f\u0440\u043e\u0438\u0437\u0432.",
+            ["panel.details.production_none"] = "\u041d\u0435\u0442",
+            ["panel.details.production_stalled"] = "\u0421\u0442\u043e\u043f",
+            ["panel.details.production_input"] = "\u0412\u0445\u043e\u0434",
+            ["panel.details.production_output"] = "\u0412\u044b\u0445\u043e\u0434",
+            ["panel.details.production_cycle"] = "\u0426\u0438\u043a\u043b",
+            ["panel.details.production_need"] = "\u041d\u0443\u0436\u043d\u043e",
+
+            // Resource type names (full).
             ["resource.Food"] = "\u041f\u0440\u043e\u0434\u043e\u0432\u043e\u043b\u044c\u0441\u0442\u0432\u0438\u0435",
             ["resource.Metals"] = "\u041c\u0435\u0442\u0430\u043b\u043b\u044b",
             ["resource.Fuel"] = "\u0422\u043e\u043f\u043b\u0438\u0432\u043e",
             ["resource.Electronics"] = "\u042d\u043b\u0435\u043a\u0442\u0440\u043e\u043d\u0438\u043a\u0430",
+
+            // Resource type names (short, for compact panel display).
+            ["resource_short.Food"] = "\u0415\u0434\u0430",
+            ["resource_short.Metals"] = "\u041c\u0435\u0442.",
+            ["resource_short.Fuel"] = "\u0422\u043e\u043f\u043b.",
+            ["resource_short.Electronics"] = "\u042d\u043b\u0435\u043a.",
 
             // Body type names.
             ["bodytype.Star"] = "\u0417\u0432\u0435\u0437\u0434\u0430",
@@ -123,6 +138,15 @@ namespace SpaceSim.UI.Localization
         public static string GetResourceName(string resourceType)
         {
             return Get($"resource.{resourceType}");
+        }
+
+        /// <summary>
+        /// Get short (abbreviated) resource name for compact UI display.
+        /// Example: "Еда", "Мет.", "Топл.", "Элек."
+        /// </summary>
+        public static string GetResourceShortName(string resourceType)
+        {
+            return Get($"resource_short.{resourceType}");
         }
     }
 }
