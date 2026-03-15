@@ -1,3 +1,4 @@
+using System.Text;
 using UnityEngine;
 using UnityEngine.UIElements;
 using SpaceSim.Simulation.Core;
@@ -17,6 +18,7 @@ namespace SpaceSim.UI.Panels
     /// Displays station-specific fields when a station is selected.
     /// Shows SOI info for bodies and dominant body for ships.
     /// Shows docking info for ships and stations.
+    /// Shows cargo contents for ships and storage for stations.
     /// </summary>
     public class ObjectDetailsPanelController : MonoBehaviour
     {
@@ -50,6 +52,10 @@ namespace SpaceSim.UI.Panels
         private VisualElement _shipDockedPortRow;
         private Label _dockedPortValue;
 
+        // Ship cargo UI elements.
+        private VisualElement _shipCargoRow;
+        private Label _shipCargoValue;
+
         // Station-specific UI elements.
         private VisualElement _stationKindRow;
         private Label _stationKindValue;
@@ -62,11 +68,18 @@ namespace SpaceSim.UI.Panels
         private VisualElement _stationOccupiedRow;
         private Label _stationOccupiedValue;
 
+        // Station storage UI elements.
+        private VisualElement _stationStorageRow;
+        private Label _stationStorageValue;
+
         // SOI radius row (for non-ship bodies with SOI).
         private VisualElement _soiRadiusRow;
         private Label _soiRadiusValue;
 
         private EntityId _currentSelectionId = EntityId.None;
+
+        // Reusable StringBuilder for cargo/storage formatting.
+        private readonly StringBuilder _sb = new StringBuilder();
 
         public void Initialize(WorldRegistry registry, SelectionService selectionService)
         {
@@ -132,6 +145,11 @@ namespace SpaceSim.UI.Panels
             SetLabel(_root, "details-docked-at-label", UIStrings.Get("panel.details.docked_at"));
             SetLabel(_root, "details-docked-port-label", UIStrings.Get("panel.details.docking_port"));
 
+            // Ship cargo row.
+            _shipCargoRow = _root.Q<VisualElement>("details-cargo-row");
+            _shipCargoValue = _root.Q<Label>("details-cargo-value");
+            SetLabel(_root, "details-cargo-label", UIStrings.Get("panel.details.cargo"));
+
             // Station rows.
             _stationKindRow = _root.Q<VisualElement>("details-stationkind-row");
             _stationKindValue = _root.Q<Label>("details-stationkind-value");
@@ -149,6 +167,11 @@ namespace SpaceSim.UI.Panels
 
             SetLabel(_root, "details-station-ports-label", UIStrings.Get("panel.details.docking_ports"));
             SetLabel(_root, "details-station-occupied-label", UIStrings.Get("panel.details.ports_occupied"));
+
+            // Station storage row.
+            _stationStorageRow = _root.Q<VisualElement>("details-storage-row");
+            _stationStorageValue = _root.Q<Label>("details-storage-value");
+            SetLabel(_root, "details-storage-label", UIStrings.Get("panel.details.storage"));
 
             // SOI radius row (for bodies).
             _soiRadiusRow = _root.Q<VisualElement>("details-soiradius-row");
@@ -230,6 +253,7 @@ namespace SpaceSim.UI.Panels
             SetRowVisible(_shipSOIRow, isShip);
             SetRowVisible(_shipDockedAtRow, false);
             SetRowVisible(_shipDockedPortRow, false);
+            SetRowVisible(_shipCargoRow, false);
 
             if (isShip)
             {
@@ -250,6 +274,7 @@ namespace SpaceSim.UI.Panels
             SetRowVisible(_attachmentRow, isStation);
             SetRowVisible(_stationPortsRow, false);
             SetRowVisible(_stationOccupiedRow, false);
+            SetRowVisible(_stationStorageRow, false);
 
             if (isStation)
             {
@@ -305,6 +330,14 @@ namespace SpaceSim.UI.Panels
                 _dockedPortValue.text = $"#{info.DockedPortId}";
             }
 
+            // Cargo display.
+            bool hasCargo = info.Cargo != null;
+            SetRowVisible(_shipCargoRow, hasCargo);
+            if (hasCargo && _shipCargoValue != null)
+            {
+                _shipCargoValue.text = FormatCargo(info.Cargo);
+            }
+
             // Update dominant SOI body display.
             if (_soiBodyValue != null)
             {
@@ -336,6 +369,57 @@ namespace SpaceSim.UI.Panels
                 if (_stationOccupiedValue != null)
                     _stationOccupiedValue.text = $"{docking.OccupiedCount} / {docking.TotalPorts}";
             }
+
+            // Storage display.
+            bool hasStorage = body.StationInfo.HasStorage;
+            SetRowVisible(_stationStorageRow, hasStorage);
+            if (hasStorage && _stationStorageValue != null)
+            {
+                _stationStorageValue.text = FormatStorage(body.StationInfo.Storage);
+            }
+        }
+
+        private string FormatCargo(ShipCargo cargo)
+        {
+            if (cargo == null || cargo.IsEmpty)
+                return UIStrings.Get("panel.details.cargo_empty");
+
+            _sb.Clear();
+            bool first = true;
+            foreach (var type in cargo.GetNonEmptyTypes())
+            {
+                if (!first) _sb.Append(", ");
+                _sb.Append(UIStrings.GetResourceName(type.ToString()));
+                _sb.Append(": ");
+                _sb.Append(cargo.GetAmount(type).ToString("F0"));
+                first = false;
+            }
+            _sb.Append($" [{cargo.TotalUsed:F0}/{cargo.Capacity:F0}]");
+            return _sb.ToString();
+        }
+
+        private string FormatStorage(StationStorage storage)
+        {
+            if (storage == null)
+                return UIStrings.Get("panel.details.storage_empty");
+
+            _sb.Clear();
+            bool first = true;
+            bool any = false;
+            foreach (var type in storage.GetNonEmptyTypes())
+            {
+                if (!first) _sb.Append(", ");
+                _sb.Append(UIStrings.GetResourceName(type.ToString()));
+                _sb.Append(": ");
+                _sb.Append(storage.GetAmount(type).ToString("F0"));
+                first = false;
+                any = true;
+            }
+
+            if (!any)
+                return UIStrings.Get("panel.details.storage_empty");
+
+            return _sb.ToString();
         }
 
         private void ShowNoSelection()

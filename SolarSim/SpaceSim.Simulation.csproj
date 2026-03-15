@@ -52,10 +52,13 @@
     <Compile Include="Assets\Scripts\Simulation\Core\SampleStarSystemFactory.cs" />
     <Compile Include="Assets\Scripts\Simulation\Ships\NPCShipScheduler.cs" />
     <Compile Include="Assets\Scripts\Simulation\Ships\ShipMovementSystem.cs" />
+    <Compile Include="Assets\Scripts\Simulation\Economy\StationEconomyConfig.cs" />
     <Compile Include="Assets\Scripts\Simulation\Time\SimulationClock.cs" />
     <Compile Include="Assets\Scripts\Simulation\Orbits\OrbitalPositionCalculator.cs" />
     <Compile Include="Assets\Scripts\Simulation\Docking\DockingSystem.cs" />
+    <Compile Include="Assets\Scripts\Simulation\Economy\CargoTransferService.cs" />
     <Compile Include="Assets\Scripts\Simulation\SOI\SOIResolver.cs" />
+    <Compile Include="Assets\Scripts\Simulation\Economy\EconomyInitializer.cs" />
     <Compile Include="Assets\Scripts\Simulation\Core\SelectionService.cs" />
     <Compile Include="Assets\Scripts\Simulation\Core\WorldPositionResolver.cs" />
     <Compile Include="Assets\Scripts\Simulation\Core\StarSystemBuilder.cs" />

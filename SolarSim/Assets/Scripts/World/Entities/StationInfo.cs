@@ -36,9 +36,14 @@ namespace SpaceSim.World.Entities
         /// <summary>
         /// Docking capability data. Non-null if this station supports docking.
         /// Contains the list of docking ports and their occupancy state.
-        /// Only orbital stations support docking in the current implementation.
         /// </summary>
         public DockingInfo Docking { get; set; }
+
+        /// <summary>
+        /// Cargo storage for this station. Non-null if station participates in economy.
+        /// Initialized by EconomyInitializer after star system build.
+        /// </summary>
+        public StationStorage Storage { get; set; }
 
         public StationInfo()
         {
@@ -46,6 +51,7 @@ namespace SpaceSim.World.Entities
             SurfaceLatitudeDeg = 0.0;
             SurfaceLongitudeDeg = 0.0;
             Docking = null;
+            Storage = null;
         }
 
         public StationInfo(StationKind kind, double latDeg = 0.0, double lonDeg = 0.0)
@@ -54,11 +60,11 @@ namespace SpaceSim.World.Entities
             SurfaceLatitudeDeg = latDeg;
             SurfaceLongitudeDeg = lonDeg;
             Docking = null;
+            Storage = null;
         }
 
         /// <summary>
         /// Initialize docking capability with a given number of ports.
-        /// Only makes sense for orbital stations.
         /// </summary>
         /// <param name="portCount">Number of docking ports.</param>
         /// <param name="portDistance">Distance of ports from station center in Mm.</param>
@@ -76,12 +82,16 @@ namespace SpaceSim.World.Entities
         /// <summary>Whether this station has docking capability.</summary>
         public bool HasDocking => Docking != null && Docking.TotalPorts > 0;
 
+        /// <summary>Whether this station has cargo storage.</summary>
+        public bool HasStorage => Storage != null;
+
         public override string ToString()
         {
             string dockStr = HasDocking ? $" {Docking}" : "";
+            string storageStr = HasStorage ? $" {Storage}" : "";
             if (Kind == StationKind.Surface)
-                return $"StationInfo[{Kind} lat={SurfaceLatitudeDeg:F1} lon={SurfaceLongitudeDeg:F1}{dockStr}]";
-            return $"StationInfo[{Kind}{dockStr}]";
+                return $"StationInfo[{Kind} lat={SurfaceLatitudeDeg:F1} lon={SurfaceLongitudeDeg:F1}{dockStr}{storageStr}]";
+            return $"StationInfo[{Kind}{dockStr}{storageStr}]";
         }
     }
 }

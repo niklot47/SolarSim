@@ -49,9 +49,14 @@
     <Analyzer Include="C:\MyPrograms\Unity\Hub\Editor\6000.3.10f1\Editor\Data\Tools\BuildPipeline\Unity.SourceGenerators\Unity.UIToolkit.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assets\Scripts\Debug\DebugSnapshotProviders.cs" />
     <Compile Include="Assets\Scripts\Debug\RingBuffer.cs" />
     <Compile Include="Assets\Scripts\Debug\GameDebug.cs" />
+    <Compile Include="Assets\Scripts\Debug\DebugExportUtility.cs" />
+    <Compile Include="Assets\Scripts\Debug\BuiltInSnapshotProviders.cs" />
+    <Compile Include="Assets\Scripts\Debug\DebugModels.cs" />
     <Compile Include="Assets\Scripts\Debug\DebugEvent.cs" />
+    <Compile Include="Assets\Scripts\Debug\DebugInvariantChecker.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Scripts\Debug\SpaceSim.Debug.asmdef" />
@@ -1153,6 +1158,7 @@
   <ItemGroup>
     <ProjectReference Include="SpaceSim.Shared.csproj" />
     <ProjectReference Include="SpaceSim.Simulation.csproj" />
+    <ProjectReference Include="SpaceSim.World.csproj" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <ItemGroup>

@@ -3,7 +3,8 @@
     "rootNamespace": "SpaceSim.Debug",
     "references": [
         "SpaceSim.Shared",
-        "SpaceSim.Simulation"
+        "SpaceSim.Simulation",
+        "SpaceSim.World"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

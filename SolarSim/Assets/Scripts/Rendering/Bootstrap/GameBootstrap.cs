@@ -48,6 +48,11 @@ namespace SpaceSim.Rendering.Bootstrap
             GameDebug.Enabled = enableDebugSystem;
             GameDebug.OnEventLogged = ForwardToUnityLog;
 
+            // Set export directory to persistentDataPath/debug_bundles.
+            string exportDir = System.IO.Path.Combine(
+                Application.persistentDataPath, "debug_bundles");
+            GameDebug.SetExportDirectory(exportDir);
+
             GameDebug.Log(DebugCategory.DEBUG, "GameBootstrap initialized",
                 source: nameof(GameBootstrap),
                 sceneName: gameObject.scene.name);
@@ -63,12 +68,24 @@ namespace SpaceSim.Rendering.Bootstrap
             IsInitialized = true;
 
             UnityEngine.Debug.Log($"[GameBootstrap] Initialized. {GameDebug.GetStatus()}");
+            UnityEngine.Debug.Log($"[GameBootstrap] Debug export dir: {exportDir}");
         }
 
         private void Update()
         {
             // Tick the simulation clock with Unity delta time.
             Clock?.Tick(UnityEngine.Time.deltaTime);
+
+            // Update debug context each frame so snapshots have fresh data.
+            if (GameDebug.Enabled && Clock != null)
+            {
+                GameDebug.SetContext(
+                    sceneName: gameObject.scene.name,
+                    frame: UnityEngine.Time.frameCount,
+                    simTime: Clock.CurrentTime,
+                    timeScale: Clock.TimeScale,
+                    isPaused: Clock.IsPaused);
+            }
         }
 
         private void OnDestroy()
@@ -102,31 +119,54 @@ namespace SpaceSim.Rendering.Bootstrap
 
         // --- Editor convenience ---
 #if UNITY_EDITOR
-        [ContextMenu("Debug: Print Status")]
+        [ContextMenu("Debug/Печать статуса")]
         private void PrintStatus()
         {
             UnityEngine.Debug.Log(GameDebug.GetStatus());
         }
 
-        [ContextMenu("Debug: Export Bundle")]
+        [ContextMenu("Debug/Экспорт бандла")]
         private void EditorExportBundle()
         {
-            var bundle = GameDebug.ExportBundle();
-            UnityEngine.Debug.Log($"[GameDebug] Bundle exported with {((System.Collections.Generic.List<DebugEvent>)bundle["events"]).Count} events");
+            string path = GameDebug.ExportBundle();
+            if (!string.IsNullOrEmpty(path))
+                UnityEngine.Debug.Log($"[GameDebug] Bundle exported: {path}");
+            else
+                UnityEngine.Debug.LogWarning("[GameDebug] Bundle export returned no path");
         }
 
-        [ContextMenu("Debug: Capture Snapshot")]
+        [ContextMenu("Debug/Снимок состояния")]
         private void EditorCaptureSnapshot()
         {
             var snap = GameDebug.CaptureSnapshot("editor_manual");
-            UnityEngine.Debug.Log($"[GameDebug] Snapshot: {snap["eventCount"]} events, {snap["errorCount"]} errors");
+            UnityEngine.Debug.Log(
+                $"[GameDebug] Snapshot: {snap.Subsystems.Count} subsystems, " +
+                $"simTime={snap.SimulationTime:F2}, errors={snap.RecentErrors.Count}");
         }
 
-        [ContextMenu("Debug: Clear")]
+        [ContextMenu("Debug/Проверка инвариантов")]
+        private void EditorRunInvariants()
+        {
+            var violations = GameDebug.RunInvariantChecks();
+            if (violations.Count == 0)
+                UnityEngine.Debug.Log("[GameDebug] Invariant check: OK (0 violations)");
+            else
+                UnityEngine.Debug.LogWarning($"[GameDebug] Invariant check: {violations.Count} violation(s)!");
+        }
+
+        [ContextMenu("Debug/Очистить")]
         private void EditorClear()
         {
             GameDebug.Clear();
             UnityEngine.Debug.Log("[GameDebug] Cleared");
+        }
+
+        [ContextMenu("Debug/Экспорт + Инварианты")]
+        private void EditorFullDebugDump()
+        {
+            GameDebug.RunInvariantChecks();
+            string path = GameDebug.ExportBundle();
+            UnityEngine.Debug.Log($"[GameDebug] Full dump: {path}");
         }
 #endif
     }

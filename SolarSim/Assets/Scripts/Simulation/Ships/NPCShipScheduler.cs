@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using SpaceSim.Shared.Identifiers;
 using SpaceSim.Shared.Math;
 using SpaceSim.Simulation.Docking;
+using SpaceSim.Simulation.Economy;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
 
@@ -11,6 +12,7 @@ namespace SpaceSim.Simulation.Ships
     /// <summary>
     /// Automatically assigns new routes to NPC ships that have finished travelling.
     /// Also handles automatic docking at stations and undocking after wait time.
+    /// Trader ships perform cargo operations when docked.
     /// Runs each tick after ShipMovementSystem.Update() and DockingSystem.Update().
     /// Pure C# — no UnityEngine dependency.
     ///
@@ -20,6 +22,11 @@ namespace SpaceSim.Simulation.Ships
     ///   but ShipMovementSystem parents to station's parent body). NPCShipScheduler detects
     ///   the ship was targeting a surface station and requests docking.
     /// - After undock: _pendingDeparture prevents re-docking loop, ship departs immediately.
+    ///
+    /// Trader behavior (when docked):
+    /// 1. Unload all cargo to station.
+    /// 2. Load available resources from station.
+    /// 3. After DockingWaitTime: undock and travel to another station.
     /// </summary>
     public class NPCShipScheduler
     {
@@ -55,12 +62,20 @@ namespace SpaceSim.Simulation.Ships
         /// </summary>
         private readonly Dictionary<EntityId, EntityId> _pendingSurfaceDock = new Dictionary<EntityId, EntityId>();
 
+        /// <summary>
+        /// Tracks ships that have already performed cargo operations at their current docking.
+        /// Prevents repeated load/unload every tick while docked.
+        /// </summary>
+        private readonly HashSet<EntityId> _cargoHandled = new HashSet<EntityId>();
+
         private readonly Random _rng;
         private readonly List<EntityId> _destinationCandidates = new List<EntityId>();
+        private readonly List<EntityId> _stationCandidates = new List<EntityId>();
         private bool _candidatesDirty = true;
 
         private Func<EntityId, double, SimVec3> _positionResolver;
         private DockingSystem _dockingSystem;
+        private CargoTransferService _cargoTransfer;
 
         public event Action<EntityId> OnRouteScheduled;
 
@@ -93,6 +108,14 @@ namespace SpaceSim.Simulation.Ships
         public void SetDockingSystem(DockingSystem dockingSystem)
         {
             _dockingSystem = dockingSystem;
+        }
+
+        /// <summary>
+        /// Set the cargo transfer service for NPC trader behavior.
+        /// </summary>
+        public void SetCargoTransfer(CargoTransferService cargoTransfer)
+        {
+            _cargoTransfer = cargoTransfer;
         }
 
         public void InvalidateDestinationCache()
@@ -234,6 +257,13 @@ namespace SpaceSim.Simulation.Ships
 
         private void HandleDockedShip(CelestialBody ship, double simTime)
         {
+            // Perform cargo operations once when docked (for traders).
+            if (!_cargoHandled.Contains(ship.Id))
+            {
+                PerformCargoOperations(ship);
+                _cargoHandled.Add(ship.Id);
+            }
+
             double dockedAt = ship.ShipInfo.DockedAtTime;
             if (simTime - dockedAt < DockingWaitTime) return;
 
@@ -243,11 +273,37 @@ namespace SpaceSim.Simulation.Ships
                 // Mark for immediate departure — prevents re-docking loop.
                 _pendingDeparture.Add(ship.Id);
                 _arrivalTimes[ship.Id] = simTime;
+                _cargoHandled.Remove(ship.Id);
+            }
+        }
+
+        /// <summary>
+        /// Perform cargo load/unload operations for NPC ships when docked.
+        /// Traders: unload all cargo, then load available resources.
+        /// Other NPC roles: no cargo operations for now.
+        /// </summary>
+        private void PerformCargoOperations(CelestialBody ship)
+        {
+            if (_cargoTransfer == null) return;
+            if (ship.ShipInfo == null) return;
+            if (!ship.ShipInfo.IsDocked) return;
+
+            var stationId = ship.ShipInfo.DockedAtStationId;
+
+            // Only Trader ships do cargo operations for now.
+            if (ship.ShipInfo.Role == ShipRole.Trader)
+            {
+                // Step 1: Unload all cargo to station.
+                _cargoTransfer.UnloadAll(ship.Id, stationId);
+
+                // Step 2: Load available resources from station.
+                _cargoTransfer.LoadAny(ship.Id, stationId);
             }
         }
 
         /// <summary>
         /// Ship just undocked — schedule a new route immediately (skip idle delay).
+        /// Traders prefer station destinations.
         /// </summary>
         private void ScheduleDepartureFromStation(CelestialBody ship, double simTime)
         {
@@ -380,7 +436,7 @@ namespace SpaceSim.Simulation.Ships
             switch (ship.ShipInfo.Role)
             {
                 case ShipRole.Trader:
-                    return PickRandomDestination(ship.ParentId);
+                    return PickTraderDestination(ship);
                 case ShipRole.Patrol:
                     return PickPatrolDestination(ship);
                 case ShipRole.Civilian:
@@ -388,6 +444,47 @@ namespace SpaceSim.Simulation.Ships
                 default:
                     return PickRandomDestination(ship.ParentId);
             }
+        }
+
+        /// <summary>
+        /// Traders prefer stations as destinations for trade loops.
+        /// Falls back to any destination if no other station is available.
+        /// </summary>
+        private EntityId PickTraderDestination(CelestialBody ship)
+        {
+            // Prefer a different station than where we currently are.
+            EntityId excludeId = ship.ParentId;
+
+            // Also exclude the station we're docked at (if any).
+            if (ship.ShipInfo.DockedAtStationId.IsValid)
+                excludeId = ship.ShipInfo.DockedAtStationId;
+
+            // Try to pick a station first.
+            if (_stationCandidates.Count > 1)
+            {
+                int count = 0;
+                for (int i = 0; i < _stationCandidates.Count; i++)
+                {
+                    if (_stationCandidates[i] != excludeId && _stationCandidates[i] != ship.ParentId)
+                        count++;
+                }
+                if (count > 0)
+                {
+                    int pick = _rng.Next(count);
+                    int idx = 0;
+                    for (int i = 0; i < _stationCandidates.Count; i++)
+                    {
+                        if (_stationCandidates[i] == excludeId || _stationCandidates[i] == ship.ParentId)
+                            continue;
+                        if (idx == pick)
+                            return _stationCandidates[i];
+                        idx++;
+                    }
+                }
+            }
+
+            // Fallback: any destination.
+            return PickRandomDestination(ship.ParentId);
         }
 
         private EntityId PickRandomDestination(EntityId excludeBodyId)
@@ -426,6 +523,8 @@ namespace SpaceSim.Simulation.Ships
         private void RebuildDestinationCandidates()
         {
             _destinationCandidates.Clear();
+            _stationCandidates.Clear();
+
             foreach (var body in _registry.AllCelestialBodies)
             {
                 if (body.BodyType == CelestialBodyType.Planet ||
@@ -434,6 +533,14 @@ namespace SpaceSim.Simulation.Ships
                 {
                     _destinationCandidates.Add(body.Id);
                 }
+
+                // Separate station list for trader preference.
+                if (body.BodyType == CelestialBodyType.Station &&
+                    body.StationInfo != null &&
+                    body.StationInfo.HasDocking)
+                {
+                    _stationCandidates.Add(body.Id);
+                }
             }
             _candidatesDirty = false;
         }
@@ -441,6 +548,7 @@ namespace SpaceSim.Simulation.Ships
         public string GetStatus()
         {
             return $"NPCShipScheduler: {_destinationCandidates.Count} destinations, " +
+                   $"{_stationCandidates.Count} stations, " +
                    $"{_arrivalTimes.Count} ships waiting, " +
                    $"{_pendingDeparture.Count} pending departure, " +
                    $"{_pendingSurfaceDock.Count} pending surface dock, speed={TravelSpeed:F1} Mm/s";

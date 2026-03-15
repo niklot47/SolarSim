@@ -6,7 +6,7 @@ namespace SpaceSim.World.Entities
     /// <summary>
     /// Ship-specific data attached to a CelestialBody with BodyType.Ship.
     /// Stored as a plain data object — no Unity dependency.
-    /// Contains role, class, movement state, active route, and docking state.
+    /// Contains role, class, movement state, active route, docking state, and cargo.
     /// </summary>
     public class ShipInfo
     {
@@ -38,6 +38,14 @@ namespace SpaceSim.World.Entities
         /// EntityId.None if no SOI is resolved.
         /// </summary>
         public EntityId CurrentSOIBodyId { get; set; }
+
+        // --- Cargo ---
+
+        /// <summary>
+        /// Ship cargo hold. Non-null when ship has cargo capability.
+        /// Initialized by EconomyInitializer after star system build.
+        /// </summary>
+        public ShipCargo Cargo { get; set; }
 
         // --- Docking fields ---
 
@@ -96,6 +104,7 @@ namespace SpaceSim.World.Entities
             CurrentRoute = null;
             OverrideWorldPosition = null;
             CurrentSOIBodyId = EntityId.None;
+            Cargo = null;
             DockedAtStationId = EntityId.None;
             DockedPortId = -1;
             DockingStartTime = 0.0;
@@ -114,6 +123,7 @@ namespace SpaceSim.World.Entities
             CurrentRoute = null;
             OverrideWorldPosition = null;
             CurrentSOIBodyId = EntityId.None;
+            Cargo = null;
             DockedAtStationId = EntityId.None;
             DockedPortId = -1;
             DockingStartTime = 0.0;
@@ -140,7 +150,8 @@ namespace SpaceSim.World.Entities
             string routeStr = CurrentRoute != null ? $" route={CurrentRoute}" : "";
             string soiStr = CurrentSOIBodyId.IsValid ? $" soi={CurrentSOIBodyId}" : "";
             string dockStr = IsDocked ? $" docked={DockedAtStationId}:{DockedPortId}" : "";
-            return $"ShipInfo[{Role} {State} key={ShipKey} class={ShipClass}{routeStr}{soiStr}{dockStr}]";
+            string cargoStr = Cargo != null ? $" {Cargo}" : "";
+            return $"ShipInfo[{Role} {State} key={ShipKey} class={ShipClass}{routeStr}{soiStr}{dockStr}{cargoStr}]";
         }
     }
 }

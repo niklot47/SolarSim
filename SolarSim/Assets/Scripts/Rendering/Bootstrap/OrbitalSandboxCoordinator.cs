@@ -1,8 +1,10 @@
 using UnityEngine;
 using UnityEngine.UIElements;
 using SpaceSim.Data.Definitions;
+using SpaceSim.Debug;
 using SpaceSim.Simulation.Core;
 using SpaceSim.Simulation.Docking;
+using SpaceSim.Simulation.Economy;
 using SpaceSim.Simulation.Ships;
 using SpaceSim.Simulation.SOI;
 using SpaceSim.Simulation.Time;
@@ -61,6 +63,7 @@ namespace SpaceSim.Rendering.Bootstrap
         private WorldPositionResolver _positionResolver;
         private SOIResolver _soiResolver;
         private DockingSystem _dockingSystem;
+        private CargoTransferService _cargoTransfer;
         private SimulationClock _clock;
         private ObjectListPanelController _listPanel;
 
@@ -77,6 +80,9 @@ namespace SpaceSim.Rendering.Bootstrap
                 return;
             }
 
+            // Initialize economy (station storage + ship cargo).
+            EconomyInitializer.Initialize(_registry);
+
             // Create simulation-side services.
             _positionResolver = new WorldPositionResolver(_registry);
             _soiResolver = new SOIResolver(_registry, _positionResolver);
@@ -89,12 +95,17 @@ namespace SpaceSim.Rendering.Bootstrap
             _dockingSystem.OnShipDocked += OnShipDocked;
             _dockingSystem.OnShipUndocked += OnShipUndocked;
 
+            // Cargo transfer service.
+            _cargoTransfer = new CargoTransferService(_registry);
+            _cargoTransfer.OnCargoTransferred += OnCargoTransferred;
+
             _npcScheduler = new NPCShipScheduler(
                 _registry, _shipMovement, () => _clock.CurrentTime,
                 npcTravelSpeed, npcMinTravelDuration, npcIdleDelay);
             _npcScheduler.OnRouteScheduled += OnNpcRouteScheduled;
             _npcScheduler.DockingWaitTime = npcDockingWaitTime;
             _npcScheduler.SetDockingSystem(_dockingSystem);
+            _npcScheduler.SetCargoTransfer(_cargoTransfer);
 
             if (mapRenderer != null)
             {
@@ -116,6 +127,9 @@ namespace SpaceSim.Rendering.Bootstrap
 
             SetupUIPanels(clock);
 
+            // --- Debug system wiring ---
+            RegisterDebugProviders();
+
             // Initial SOI pass for all ships.
             _soiResolver.UpdateAllShips(_clock.CurrentTime);
 
@@ -123,7 +137,27 @@ namespace SpaceSim.Rendering.Bootstrap
                 $"[OrbitalSandboxCoordinator] Setup complete. System: {_currentSystem}. " +
                 $"{_soiResolver.GetStatus()}. " +
                 $"NPC: speed={npcTravelSpeed:F1} minDur={npcMinTravelDuration:F1} idle={npcIdleDelay:F1} " +
-                $"dockWait={npcDockingWaitTime:F1} approach={dockingApproachDuration:F1}");
+                $"dockWait={npcDockingWaitTime:F1} approach={dockingApproachDuration:F1} " +
+                $"economy=enabled");
+        }
+
+        /// <summary>
+        /// Register all debug snapshot providers and set world registry
+        /// on GameDebug for invariant checking.
+        /// </summary>
+        private void RegisterDebugProviders()
+        {
+            GameDebug.SetWorldRegistry(_registry);
+
+            GameDebug.RegisterSnapshotProvider(new WorldSnapshotProvider(_registry));
+            GameDebug.RegisterSnapshotProvider(new ShipSnapshotProvider(_registry));
+            GameDebug.RegisterSnapshotProvider(new EconomySnapshotProvider(_registry));
+            GameDebug.RegisterSnapshotProvider(new DockingSnapshotProvider(_registry, _dockingSystem));
+            GameDebug.RegisterSnapshotProvider(new SOISnapshotProvider(_registry, _soiResolver));
+
+            GameDebug.Log(DebugCategory.DEBUG,
+                $"Debug providers registered: {GameDebug.GetStatus()}",
+                source: nameof(OrbitalSandboxCoordinator));
         }
 
         private void Update()
@@ -175,6 +209,10 @@ namespace SpaceSim.Rendering.Bootstrap
                 _dockingSystem.OnShipDocked -= OnShipDocked;
                 _dockingSystem.OnShipUndocked -= OnShipUndocked;
             }
+            if (_cargoTransfer != null)
+            {
+                _cargoTransfer.OnCargoTransferred -= OnCargoTransferred;
+            }
         }
 
 #if UNITY_EDITOR
@@ -197,9 +235,9 @@ namespace SpaceSim.Rendering.Bootstrap
             RefreshObjectList();
             var ship = _registry.GetCelestialBody(shipId);
             var dest = _registry.GetCelestialBody(destinationId);
-            UnityEngine.Debug.Log(
-                $"[OrbitalSandboxCoordinator] Ship arrived: " +
-                $"{ship?.DisplayName ?? shipId.ToString()} at {dest?.DisplayName ?? destinationId.ToString()}");
+            GameDebug.Log(DebugCategory.SHIPS,
+                $"Ship arrived: {ship?.DisplayName ?? shipId.ToString()} at {dest?.DisplayName ?? destinationId.ToString()}",
+                source: nameof(OrbitalSandboxCoordinator));
         }
 
         private void OnShipDocked(EntityId shipId, EntityId stationId)
@@ -207,9 +245,9 @@ namespace SpaceSim.Rendering.Bootstrap
             RefreshObjectList();
             var ship = _registry.GetCelestialBody(shipId);
             var station = _registry.GetCelestialBody(stationId);
-            UnityEngine.Debug.Log(
-                $"[Docking] {ship?.DisplayName ?? shipId.ToString()} docked at " +
-                $"{station?.DisplayName ?? stationId.ToString()}");
+            GameDebug.Log(DebugCategory.SHIPS,
+                $"{ship?.DisplayName ?? shipId.ToString()} docked at {station?.DisplayName ?? stationId.ToString()}",
+                source: "Docking");
         }
 
         private void OnShipUndocked(EntityId shipId, EntityId stationId)
@@ -217,9 +255,22 @@ namespace SpaceSim.Rendering.Bootstrap
             RefreshObjectList();
             var ship = _registry.GetCelestialBody(shipId);
             var station = _registry.GetCelestialBody(stationId);
-            UnityEngine.Debug.Log(
-                $"[Docking] {ship?.DisplayName ?? shipId.ToString()} undocked from " +
-                $"{station?.DisplayName ?? stationId.ToString()}");
+            GameDebug.Log(DebugCategory.SHIPS,
+                $"{ship?.DisplayName ?? shipId.ToString()} undocked from {station?.DisplayName ?? stationId.ToString()}",
+                source: "Docking");
+        }
+
+        private void OnCargoTransferred(EntityId shipId, EntityId stationId, ResourceType resource, double amount, string direction)
+        {
+            var ship = _registry.GetCelestialBody(shipId);
+            var station = _registry.GetCelestialBody(stationId);
+            string shipName = ship?.DisplayName ?? shipId.ToString();
+            string stationName = station?.DisplayName ?? stationId.ToString();
+
+            string verb = direction == "load" ? "loaded" : "unloaded";
+            string message = $"Ship {shipName} {verb} {amount:F0} {resource} at {stationName}";
+
+            GameDebug.Log(DebugCategory.ECONOMY, message, source: "CargoTransfer");
         }
 
         private void LogSOITransition(SOITransition t)
@@ -232,8 +283,9 @@ namespace SpaceSim.Rendering.Bootstrap
             string prevName = prevBody != null ? prevBody.DisplayName : (t.PreviousBodyId.IsValid ? t.PreviousBodyId.ToString() : "none");
             string newName = newBody != null ? newBody.DisplayName : (t.NewBodyId.IsValid ? t.NewBodyId.ToString() : "none");
 
-            UnityEngine.Debug.Log(
-                $"[SOI] {shipName}: {prevName} -> {newName} (t={t.SimTime:F1})");
+            GameDebug.Log(DebugCategory.ORBIT,
+                $"SOI transition: {shipName}: {prevName} -> {newName} (t={t.SimTime:F1})",
+                source: "SOI");
         }
 
         private void RemoveFromTransitParent(EntityId shipId)
@@ -309,5 +361,6 @@ namespace SpaceSim.Rendering.Bootstrap
         public WorldPositionResolver PositionResolver => _positionResolver;
         public SOIResolver SOI => _soiResolver;
         public DockingSystem Docking => _dockingSystem;
+        public CargoTransferService CargoTransfer => _cargoTransfer;
     }
 }

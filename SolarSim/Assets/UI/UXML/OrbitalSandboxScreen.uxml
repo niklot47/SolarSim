@@ -146,6 +146,16 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
 
+                <!-- Ship: Cargo -->
+                <ui:VisualElement name="details-cargo-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-cargo-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-cargo-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
                 <!-- Station: Kind -->
                 <ui:VisualElement name="details-stationkind-row" class="details-row">
                     <ui:VisualElement class="details-cell-label">
@@ -183,6 +193,16 @@
                     </ui:VisualElement>
                     <ui:VisualElement class="details-cell-value">
                         <ui:Label name="details-station-occupied-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Station: Storage -->
+                <ui:VisualElement name="details-storage-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-storage-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-storage-value" class="details-value" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>

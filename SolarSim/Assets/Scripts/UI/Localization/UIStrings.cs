@@ -38,6 +38,18 @@ namespace SpaceSim.UI.Localization
             ["panel.details.docking_ports"] = "\u0421\u0442\u044b\u043a\u043e\u0432\u043e\u0447\u043d\u044b\u0435 \u043f\u043e\u0440\u0442\u044b",
             ["panel.details.ports_occupied"] = "\u0417\u0430\u043d\u044f\u0442\u043e",
 
+            // Economy / Cargo details.
+            ["panel.details.cargo"] = "\u0413\u0440\u0443\u0437",
+            ["panel.details.cargo_empty"] = "\u041f\u0443\u0441\u0442\u043e",
+            ["panel.details.storage"] = "\u0421\u043a\u043b\u0430\u0434",
+            ["panel.details.storage_empty"] = "\u041f\u0443\u0441\u0442\u043e",
+
+            // Resource type names.
+            ["resource.Food"] = "\u041f\u0440\u043e\u0434\u043e\u0432\u043e\u043b\u044c\u0441\u0442\u0432\u0438\u0435",
+            ["resource.Metals"] = "\u041c\u0435\u0442\u0430\u043b\u043b\u044b",
+            ["resource.Fuel"] = "\u0422\u043e\u043f\u043b\u0438\u0432\u043e",
+            ["resource.Electronics"] = "\u042d\u043b\u0435\u043a\u0442\u0440\u043e\u043d\u0438\u043a\u0430",
+
             // Body type names.
             ["bodytype.Star"] = "\u0417\u0432\u0435\u0437\u0434\u0430",
             ["bodytype.Planet"] = "\u041f\u043b\u0430\u043d\u0435\u0442\u0430",
@@ -106,6 +118,11 @@ namespace SpaceSim.UI.Localization
         public static string GetAttachmentModeName(string mode)
         {
             return Get($"attachment.{mode}");
+        }
+
+        public static string GetResourceName(string resourceType)
+        {
+            return Get($"resource.{resourceType}");
         }
     }
 }
