@@ -5,6 +5,7 @@ using SpaceSim.Simulation.Core;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
 using SpaceSim.UI.Localization;
+using SpaceSim.UI.Core;
 
 // Resolve ambiguity with UnityEngine.EntityId (Unity 6+).
 using EntityId = SpaceSim.Shared.Identifiers.EntityId;
@@ -14,8 +15,8 @@ namespace SpaceSim.UI.Panels
     /// <summary>
     /// UI Toolkit controller for the object details panel (right panel).
     /// Shows compact properties of the currently selected celestial body.
-    /// Includes collapsible panel header and "Details" button that opens
-    /// the full-screen modal detail window.
+    /// Includes collapsible panel header, large icon, and "Details" button
+    /// that opens the full-screen modal detail window.
     /// </summary>
     public class ObjectDetailsPanelController : MonoBehaviour
     {
@@ -36,6 +37,9 @@ namespace SpaceSim.UI.Panels
         private VisualElement _panelBody;
         private Button _collapseBtn;
         private bool _isCollapsed;
+
+        // Large icon in compact panel.
+        private VisualElement _panelIconElement;
 
         // "Details" button.
         private Button _detailsMoreBtn;
@@ -82,16 +86,15 @@ namespace SpaceSim.UI.Panels
         private VisualElement _stationProductionRow;
         private Label _stationProductionValue;
 
-        // SOI radius row (for non-ship bodies with SOI).
+        // SOI radius row.
         private VisualElement _soiRadiusRow;
         private Label _soiRadiusValue;
 
         private EntityId _currentSelectionId = EntityId.None;
 
-        // Reference to the modal controller (set by coordinator).
+        // Reference to the modal controller.
         private DetailModalController _modalController;
 
-        // Reusable StringBuilder for cargo/storage/production formatting.
         private readonly StringBuilder _sb = new StringBuilder();
 
         public void Initialize(WorldRegistry registry, SelectionService selectionService)
@@ -103,9 +106,6 @@ namespace SpaceSim.UI.Panels
                 _selectionService.OnSelectionChanged += OnSelectionChanged;
         }
 
-        /// <summary>
-        /// Set the modal controller reference so "Details" button can open it.
-        /// </summary>
         public void SetModalController(DetailModalController modal)
         {
             _modalController = modal;
@@ -126,7 +126,7 @@ namespace SpaceSim.UI.Panels
             if (_titleLabel != null)
                 _titleLabel.text = UIStrings.Get("panel.details.title");
 
-            // Setup collapse button.
+            // Setup collapse.
             _panel = _root.Q<VisualElement>("right-panel");
             _panelBody = _root.Q<VisualElement>("right-panel-body");
             _collapseBtn = _root.Q<Button>("right-collapse-btn");
@@ -135,6 +135,9 @@ namespace SpaceSim.UI.Panels
 
             _contentContainer = _root.Q<VisualElement>("details-content");
             _noSelectionLabel = _root.Q<Label>("details-no-selection");
+
+            // Large icon element in the panel header area.
+            _panelIconElement = _root.Q<VisualElement>("details-icon");
 
             _nameValue = _root.Q<Label>("details-name-value");
             _typeValue = _root.Q<Label>("details-type-value");
@@ -206,7 +209,7 @@ namespace SpaceSim.UI.Panels
             _stationProductionValue = _root.Q<Label>("details-production-value");
             SetLabel(_root, "details-production-label", UIStrings.Get("panel.details.production"));
 
-            // SOI radius row (for bodies).
+            // SOI radius row.
             _soiRadiusRow = _root.Q<VisualElement>("details-soiradius-row");
             _soiRadiusValue = _root.Q<Label>("details-soiradius-value");
             SetLabel(_root, "details-soiradius-label", UIStrings.Get("panel.details.soi_radius"));
@@ -227,28 +230,14 @@ namespace SpaceSim.UI.Panels
         {
             _isCollapsed = !_isCollapsed;
 
+            // Hide/show the entire panel body (content + padding disappear).
             if (_panelBody != null)
-            {
-                if (_isCollapsed)
-                    _panelBody.AddToClassList("panel-body-hidden");
-                else
-                    _panelBody.RemoveFromClassList("panel-body-hidden");
-            }
+                _panelBody.style.display = _isCollapsed ? DisplayStyle.None : DisplayStyle.Flex;
 
-            // Shrink/expand the panel itself so only header shows when collapsed.
+            // When collapsed, align-self: flex-start shrinks panel height to header only.
+            // When expanded, align-self: stretch fills the full parent height.
             if (_panel != null)
-            {
-                if (_isCollapsed)
-                {
-                    _panel.style.flexGrow = 0;
-                    _panel.style.height = StyleKeyword.Auto;
-                }
-                else
-                {
-                    _panel.style.flexGrow = StyleKeyword.Null;
-                    _panel.style.height = StyleKeyword.Null;
-                }
-            }
+                _panel.style.alignSelf = _isCollapsed ? Align.FlexStart : Align.Stretch;
 
             if (_collapseBtn != null)
                 _collapseBtn.text = _isCollapsed ? "\u25B6" : "\u25BC";
@@ -266,7 +255,6 @@ namespace SpaceSim.UI.Panels
             var body = _registry?.GetCelestialBody(_currentSelectionId);
             if (body == null) return;
 
-            // Live update dynamic fields.
             if (body.ShipInfo != null)
                 UpdateShipDynamicFields(body);
             if (body.StationInfo != null)
@@ -299,10 +287,11 @@ namespace SpaceSim.UI.Panels
                 _contentContainer.style.display = DisplayStyle.Flex;
             if (_noSelectionLabel != null)
                 _noSelectionLabel.style.display = DisplayStyle.None;
-
-            // Show the "Details" button.
             if (_detailsMoreBtn != null)
                 _detailsMoreBtn.style.display = DisplayStyle.Flex;
+
+            // Update large icon in panel.
+            UpdatePanelIcon(body);
 
             if (_nameValue != null)
                 _nameValue.text = body.DisplayName;
@@ -379,6 +368,22 @@ namespace SpaceSim.UI.Panels
             }
         }
 
+        private void UpdatePanelIcon(CelestialBody body)
+        {
+            if (_panelIconElement == null) return;
+
+            var texture = BodyIconResolver.GetLargeIcon(body);
+            if (texture != null)
+            {
+                _panelIconElement.style.backgroundImage = new StyleBackground(texture);
+                _panelIconElement.style.display = DisplayStyle.Flex;
+            }
+            else
+            {
+                _panelIconElement.style.display = DisplayStyle.None;
+            }
+        }
+
         private void UpdateShipDynamicFields(CelestialBody body)
         {
             var info = body.ShipInfo;
@@ -396,7 +401,6 @@ namespace SpaceSim.UI.Panels
                 _destValue.text = dest != null ? dest.DisplayName : info.CurrentRoute.DestinationBodyId.ToString();
             }
 
-            // Docking info for ships.
             bool isDocked = info.State == ShipState.Docked && info.DockedAtStationId.IsValid;
             bool isApproaching = info.State == ShipState.ApproachingStation && info.DockedAtStationId.IsValid;
 
@@ -414,7 +418,6 @@ namespace SpaceSim.UI.Panels
                 _dockedPortValue.text = $"#{info.DockedPortId}";
             }
 
-            // Cargo display.
             bool hasCargo = info.Cargo != null;
             SetRowVisible(_shipCargoRow, hasCargo);
             if (hasCargo && _shipCargoValue != null)
@@ -422,7 +425,6 @@ namespace SpaceSim.UI.Panels
                 _shipCargoValue.text = FormatCargo(info.Cargo);
             }
 
-            // Update dominant SOI body display.
             if (_soiBodyValue != null)
             {
                 if (info.CurrentSOIBodyId.IsValid)
@@ -454,7 +456,6 @@ namespace SpaceSim.UI.Panels
                     _stationOccupiedValue.text = $"{docking.OccupiedCount} / {docking.TotalPorts}";
             }
 
-            // Storage display.
             bool hasStorage = body.StationInfo.HasStorage;
             SetRowVisible(_stationStorageRow, hasStorage);
             if (hasStorage && _stationStorageValue != null)
@@ -462,7 +463,6 @@ namespace SpaceSim.UI.Panels
                 _stationStorageValue.text = FormatStorage(body.StationInfo.Storage);
             }
 
-            // Production display.
             bool hasProduction = body.StationInfo.HasProduction;
             SetRowVisible(_stationProductionRow, hasProduction);
             if (hasProduction && _stationProductionValue != null)
@@ -492,8 +492,7 @@ namespace SpaceSim.UI.Panels
 
         private string FormatStorage(StationStorage storage)
         {
-            if (storage == null)
-                return UIStrings.Get("panel.details.storage_empty");
+            if (storage == null) return UIStrings.Get("panel.details.storage_empty");
 
             _sb.Clear();
             bool first = true;
@@ -507,21 +506,15 @@ namespace SpaceSim.UI.Panels
                 first = false;
                 any = true;
             }
-
-            if (!any)
-                return UIStrings.Get("panel.details.storage_empty");
-
-            return _sb.ToString();
+            return any ? _sb.ToString() : UIStrings.Get("panel.details.storage_empty");
         }
 
         private string FormatProduction(StationProductionState prod)
         {
-            if (prod == null || !prod.HasRecipe)
-                return UIStrings.Get("panel.details.production_none");
+            if (prod == null || !prod.HasRecipe) return UIStrings.Get("panel.details.production_none");
 
             var recipe = prod.Recipe;
             _sb.Clear();
-
             string outputName = UIStrings.GetResourceShortName(recipe.OutputResource.ToString());
             double rate = recipe.OutputAmountPerCycle / recipe.CycleTime;
             _sb.Append($"{outputName} +{rate:F1}/c");
@@ -537,13 +530,9 @@ namespace SpaceSim.UI.Panels
             }
 
             if (prod.IsStalled)
-            {
                 _sb.Append($"\n[{UIStrings.Get("panel.details.production_stalled")}]");
-            }
             else
-            {
                 _sb.Append($"\n[{prod.ProgressFraction:P0}]");
-            }
 
             return _sb.ToString();
         }
@@ -561,6 +550,8 @@ namespace SpaceSim.UI.Panels
             }
             if (_detailsMoreBtn != null)
                 _detailsMoreBtn.style.display = DisplayStyle.None;
+            if (_panelIconElement != null)
+                _panelIconElement.style.display = DisplayStyle.None;
         }
 
         private static void SetLabel(VisualElement root, string name, string text)

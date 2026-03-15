@@ -60,7 +60,7 @@ namespace SpaceSim.UI.Localization
             ["resource.Fuel"] = "\u0422\u043e\u043f\u043b\u0438\u0432\u043e",
             ["resource.Electronics"] = "\u042d\u043b\u0435\u043a\u0442\u0440\u043e\u043d\u0438\u043a\u0430",
 
-            // Resource type names (short, for compact panel display).
+            // Resource type names (short).
             ["resource_short.Food"] = "\u0415\u0434\u0430",
             ["resource_short.Metals"] = "\u041c\u0435\u0442.",
             ["resource_short.Fuel"] = "\u0422\u043e\u043f\u043b.",
@@ -105,7 +105,7 @@ namespace SpaceSim.UI.Localization
             ["time.resume"] = "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c",
             ["time.status.paused"] = "\u041f\u0430\u0443\u0437\u0430",
 
-            // Modal detail window tabs.
+            // Modal tabs.
             ["modal.tab.details"] = "\u0414\u0435\u0442\u0430\u043b\u0438",
             ["modal.tab.market"] = "\u0420\u044b\u043d\u043e\u043a",
             ["modal.tab.missions"] = "\u0417\u0430\u0434\u0430\u043d\u0438\u044f",
@@ -120,11 +120,11 @@ namespace SpaceSim.UI.Localization
             ["modal.section.economy"] = "\u042d\u043a\u043e\u043d\u043e\u043c\u0438\u043a\u0430",
             ["modal.section.production"] = "\u041f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u043e",
 
-            // Modal details labels.
+            // Modal detail labels.
             ["modal.details.orbit_radius"] = "\u0420\u0430\u0434\u0438\u0443\u0441 \u043e\u0440\u0431\u0438\u0442\u044b",
             ["modal.details.orbit_period"] = "\u041f\u0435\u0440\u0438\u043e\u0434",
 
-            // Modal placeholder text for empty tabs.
+            // Modal placeholders.
             ["modal.placeholder.market"] = "\u0420\u044b\u043d\u043e\u043a \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d",
             ["modal.placeholder.missions"] = "\u0417\u0430\u0434\u0430\u043d\u0438\u044f \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b",
             ["modal.placeholder.modules"] = "\u041c\u043e\u0434\u0443\u043b\u0438 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b",
@@ -136,43 +136,16 @@ namespace SpaceSim.UI.Localization
             return _strings.TryGetValue(key, out var value) ? value : key;
         }
 
-        public static string GetBodyTypeName(string bodyType)
-        {
-            return Get($"bodytype.{bodyType}");
-        }
-
-        public static string GetShipRoleName(string role)
-        {
-            return Get($"shiprole.{role}");
-        }
-
-        public static string GetShipStateName(string state)
-        {
-            return Get($"shipstate.{state}");
-        }
-
-        public static string GetStationKindName(string kind)
-        {
-            return Get($"stationkind.{kind}");
-        }
-
-        public static string GetAttachmentModeName(string mode)
-        {
-            return Get($"attachment.{mode}");
-        }
-
-        public static string GetResourceName(string resourceType)
-        {
-            return Get($"resource.{resourceType}");
-        }
+        public static string GetBodyTypeName(string bodyType) => Get($"bodytype.{bodyType}");
+        public static string GetShipRoleName(string role) => Get($"shiprole.{role}");
+        public static string GetShipStateName(string state) => Get($"shipstate.{state}");
+        public static string GetStationKindName(string kind) => Get($"stationkind.{kind}");
+        public static string GetAttachmentModeName(string mode) => Get($"attachment.{mode}");
+        public static string GetResourceName(string resourceType) => Get($"resource.{resourceType}");
 
         /// <summary>
         /// Get short (abbreviated) resource name for compact UI display.
-        /// Example: "Еда", "Мет.", "Топл.", "Элек."
         /// </summary>
-        public static string GetResourceShortName(string resourceType)
-        {
-            return Get($"resource_short.{resourceType}");
-        }
+        public static string GetResourceShortName(string resourceType) => Get($"resource_short.{resourceType}");
     }
 }

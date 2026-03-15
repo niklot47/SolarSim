@@ -5,12 +5,10 @@
    ============================================================ */
 
 :root {
-    /* Primary UI color (text, borders, glows) */
     --ui-color-primary: rgb(40, 220, 80);
     --ui-color-primary-dim: rgb(25, 140, 50);
     --ui-color-primary-bright: rgb(80, 255, 120);
 
-    /* Backgrounds */
     --ui-bg-panel: rgba(2, 8, 4, 0.92);
     --ui-bg-panel-header: rgba(4, 16, 8, 0.95);
     --ui-bg-row-hover: rgba(40, 220, 80, 0.08);
@@ -20,16 +18,13 @@
     --ui-bg-modal-overlay: rgba(0, 0, 0, 0.7);
     --ui-bg-modal: rgba(2, 10, 4, 0.96);
 
-    /* Borders */
     --ui-border-color: rgba(40, 220, 80, 0.35);
     --ui-border-color-bright: rgba(40, 220, 80, 0.6);
 
-    /* Text */
     --ui-text-primary: rgb(40, 220, 80);
     --ui-text-dim: rgba(40, 220, 80, 0.55);
     --ui-text-bright: rgb(120, 255, 160);
 
-    /* Tab */
     --ui-tab-inactive: rgba(40, 220, 80, 0.25);
     --ui-tab-active: rgba(40, 220, 80, 0.7);
 }
@@ -70,7 +65,7 @@
     margin-left: 4px;
 }
 
-/* --- Panel header (title + collapse button) --- */
+/* --- Panel header --- */
 
 .panel-header {
     flex-direction: row;
@@ -115,16 +110,12 @@
     border-color: var(--ui-border-color-bright);
 }
 
-/* --- Panel body (collapsible content) --- */
+/* --- Panel body --- */
 
 .panel-body {
     flex-grow: 1;
     overflow: hidden;
     padding: 6px 8px;
-}
-
-.panel-body-hidden {
-    display: none;
 }
 
 /* ============================================================
@@ -145,7 +136,7 @@
     flex-grow: 1;
 }
 
-/* --- List item with icon placeholder --- */
+/* --- List item with icon --- */
 
 .list-item-row {
     flex-direction: row;
@@ -169,6 +160,7 @@
     background-color: var(--ui-text-dim);
     margin-right: 6px;
     flex-shrink: 0;
+    -unity-background-scale-mode: scale-to-fit;
 }
 
 .list-item-label {
@@ -184,6 +176,17 @@
 /* ============================================================
    DETAILS PANEL (right panel)
    ============================================================ */
+
+/* Large icon in the details panel (300x300 PNG) */
+.details-icon {
+    width: 64px;
+    height: 64px;
+    align-self: center;
+    margin-top: 4px;
+    margin-bottom: 6px;
+    -unity-background-scale-mode: scale-to-fit;
+    flex-shrink: 0;
+}
 
 .details-content {
     flex-direction: column;
@@ -239,8 +242,6 @@
     -unity-text-align: upper-center;
     margin-top: 20px;
 }
-
-/* --- "Details" button at bottom of right panel --- */
 
 .details-more-btn {
     align-self: flex-end;
@@ -320,10 +321,9 @@
 }
 
 /* ============================================================
-   SCROLLBAR THEMING (green terminal style)
+   SCROLLBAR THEMING
    ============================================================ */
 
-/* Vertical scroller track */
 .unity-scroller--vertical {
     width: 8px;
 }
@@ -331,10 +331,8 @@
 .unity-scroller--vertical .unity-base-slider__tracker {
     background-color: rgba(40, 220, 80, 0.06);
     border-width: 0;
-    border-radius: 0;
 }
 
-/* Vertical scroller dragger (thumb) */
 .unity-scroller--vertical .unity-base-slider__dragger {
     background-color: rgba(40, 220, 80, 0.25);
     border-width: 1px;
@@ -348,12 +346,10 @@
     border-color: rgba(40, 220, 80, 0.65);
 }
 
-/* Hide the arrow buttons on scrollers */
 .unity-scroller--vertical .unity-repeat-button {
     display: none;
 }
 
-/* Horizontal scroller */
 .unity-scroller--horizontal {
     height: 8px;
 }
@@ -405,12 +401,19 @@
 
 .modal-header {
     flex-direction: row;
-    align-items: flex-start;
-    justify-content: space-between;
+    align-items: center;
     padding: 10px 14px 8px 14px;
     border-bottom-width: 1px;
     border-bottom-color: var(--ui-border-color);
     flex-shrink: 0;
+}
+
+.modal-icon {
+    width: 48px;
+    height: 48px;
+    margin-right: 10px;
+    flex-shrink: 0;
+    -unity-background-scale-mode: scale-to-fit;
 }
 
 .modal-header-text {
@@ -487,7 +490,7 @@
     border-bottom-color: var(--ui-text-primary);
 }
 
-/* --- Modal body (tab content) --- */
+/* --- Modal body --- */
 
 .modal-body {
     flex-grow: 1;
@@ -502,8 +505,6 @@
 .modal-tab-content-hidden {
     display: none;
 }
-
-/* --- Modal detail rows (reuse details-row pattern) --- */
 
 .modal-details-row {
     flex-direction: row;

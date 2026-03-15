@@ -35,24 +35,16 @@ namespace SpaceSim.Rendering.Bootstrap
         [SerializeField] private StarSystemDefinition starSystemDefinition;
 
         [Header("NPC Scheduling")]
-        [Tooltip("NPC ship travel speed in Mm/sim-s.")]
         [Min(0.1f)]
         [SerializeField] private float npcTravelSpeed = 2.0f;
-
-        [Tooltip("Minimum travel duration floor (sim-seconds). SET TO 3 OR LOWER.")]
         [Min(0.5f)]
         [SerializeField] private float npcMinTravelDuration = 3.0f;
-
-        [Tooltip("Idle delay at destination before next departure (sim-seconds).")]
         [Min(0.0f)]
         [SerializeField] private float npcIdleDelay = 3.0f;
 
         [Header("Docking")]
-        [Tooltip("How long NPC ships stay docked at stations (sim-seconds).")]
         [Min(1.0f)]
         [SerializeField] private float npcDockingWaitTime = 5.0f;
-
-        [Tooltip("Duration of the docking approach phase (sim-seconds).")]
         [Min(0.5f)]
         [SerializeField] private float dockingApproachDuration = 2.0f;
 
@@ -82,10 +74,8 @@ namespace SpaceSim.Rendering.Bootstrap
                 return;
             }
 
-            // Initialize economy (station storage + ship cargo + production recipes).
             EconomyInitializer.Initialize(_registry);
 
-            // Create simulation-side services.
             _positionResolver = new WorldPositionResolver(_registry);
             _soiResolver = new SOIResolver(_registry, _positionResolver);
 
@@ -97,11 +87,9 @@ namespace SpaceSim.Rendering.Bootstrap
             _dockingSystem.OnShipDocked += OnShipDocked;
             _dockingSystem.OnShipUndocked += OnShipUndocked;
 
-            // Cargo transfer service.
             _cargoTransfer = new CargoTransferService(_registry);
             _cargoTransfer.OnCargoTransferred += OnCargoTransferred;
 
-            // Station production system.
             _productionSystem = new StationProductionSystem(_registry);
             _productionSystem.OnProductionCycleCompleted += OnProductionCycleCompleted;
 
@@ -131,12 +119,10 @@ namespace SpaceSim.Rendering.Bootstrap
             var labelController = gameObject.AddComponent<BodyLabelController>();
             labelController.Initialize(_registry, _currentSystem, mapRenderer, cameraController);
 
-            SetupUIPanels(clock);
+            SetupUIPanels(clock, labelController);
 
-            // --- Debug system wiring ---
             RegisterDebugProviders();
 
-            // Initial SOI pass for all ships.
             _soiResolver.UpdateAllShips(_clock.CurrentTime);
 
             UnityEngine.Debug.Log(
@@ -147,14 +133,9 @@ namespace SpaceSim.Rendering.Bootstrap
                 $"economy=enabled production=enabled");
         }
 
-        /// <summary>
-        /// Register all debug snapshot providers and set world registry
-        /// on GameDebug for invariant checking.
-        /// </summary>
         private void RegisterDebugProviders()
         {
             GameDebug.SetWorldRegistry(_registry);
-
             GameDebug.RegisterSnapshotProvider(new WorldSnapshotProvider(_registry));
             GameDebug.RegisterSnapshotProvider(new ShipSnapshotProvider(_registry));
             GameDebug.RegisterSnapshotProvider(new EconomySnapshotProvider(_registry));
@@ -170,7 +151,6 @@ namespace SpaceSim.Rendering.Bootstrap
         {
             if (_clock == null || _shipMovement == null || _positionResolver == null) return;
 
-            // Sync Inspector parameters to runtime services.
             if (_npcScheduler != null)
             {
                 _npcScheduler.TravelSpeed = npcTravelSpeed;
@@ -179,32 +159,22 @@ namespace SpaceSim.Rendering.Bootstrap
                 _npcScheduler.DockingWaitTime = npcDockingWaitTime;
             }
             if (_dockingSystem != null)
-            {
                 _dockingSystem.ApproachDuration = dockingApproachDuration;
-            }
 
             double simTime = _clock.CurrentTime;
 
             _shipMovement.Update(simTime, (bodyId, time) => _positionResolver.Resolve(bodyId, time));
-
-            // Update docking approach interpolation.
             _dockingSystem?.Update(simTime, (bodyId, time) => _positionResolver.Resolve(bodyId, time));
-
             _npcScheduler?.Update();
-
-            // Update station production (after NPC scheduler so cargo transfers are done first).
             _productionSystem?.Update(simTime);
 
-            // Update SOI tracking for all ships after movement.
             if (_soiResolver != null)
             {
                 var transitions = _soiResolver.UpdateAllShips(simTime);
                 if (transitions != null)
                 {
                     foreach (var t in transitions)
-                    {
                         LogSOITransition(t);
-                    }
                 }
             }
         }
@@ -219,13 +189,9 @@ namespace SpaceSim.Rendering.Bootstrap
                 _dockingSystem.OnShipUndocked -= OnShipUndocked;
             }
             if (_cargoTransfer != null)
-            {
                 _cargoTransfer.OnCargoTransferred -= OnCargoTransferred;
-            }
             if (_productionSystem != null)
-            {
                 _productionSystem.OnProductionCycleCompleted -= OnProductionCycleCompleted;
-            }
         }
 
 #if UNITY_EDITOR
@@ -277,37 +243,29 @@ namespace SpaceSim.Rendering.Bootstrap
         {
             var ship = _registry.GetCelestialBody(shipId);
             var station = _registry.GetCelestialBody(stationId);
-            string shipName = ship?.DisplayName ?? shipId.ToString();
-            string stationName = station?.DisplayName ?? stationId.ToString();
-
             string verb = direction == "load" ? "loaded" : "unloaded";
-            string message = $"Ship {shipName} {verb} {amount:F0} {resource} at {stationName}";
-
-            GameDebug.Log(DebugCategory.ECONOMY, message, source: "CargoTransfer");
+            GameDebug.Log(DebugCategory.ECONOMY,
+                $"Ship {ship?.DisplayName ?? shipId.ToString()} {verb} {amount:F0} {resource} at {station?.DisplayName ?? stationId.ToString()}",
+                source: "CargoTransfer");
         }
 
         private void OnProductionCycleCompleted(
-            EntityId stationId,
-            ResourceType outputResource,
-            double outputAmount,
+            EntityId stationId, ResourceType outputResource, double outputAmount,
             Dictionary<ResourceType, double> inputsConsumed)
         {
             var station = _registry.GetCelestialBody(stationId);
             string stationName = station?.DisplayName ?? stationId.ToString();
-
             string inputStr = "";
             if (inputsConsumed != null && inputsConsumed.Count > 0)
             {
                 var parts = new List<string>();
                 foreach (var input in inputsConsumed)
-                {
                     parts.Add($"{input.Value:F0} {input.Key}");
-                }
                 inputStr = $" consumed {string.Join(", ", parts)} and";
             }
-
-            string message = $"{stationName}{inputStr} produced {outputAmount:F0} {outputResource}";
-            GameDebug.Log(DebugCategory.ECONOMY, message, source: "Production");
+            GameDebug.Log(DebugCategory.ECONOMY,
+                $"{stationName}{inputStr} produced {outputAmount:F0} {outputResource}",
+                source: "Production");
         }
 
         private void LogSOITransition(SOITransition t)
@@ -315,14 +273,10 @@ namespace SpaceSim.Rendering.Bootstrap
             var ship = _registry.GetCelestialBody(t.ShipId);
             var prevBody = _registry.GetCelestialBody(t.PreviousBodyId);
             var newBody = _registry.GetCelestialBody(t.NewBodyId);
-
             string shipName = ship?.DisplayName ?? t.ShipId.ToString();
             string prevName = prevBody != null ? prevBody.DisplayName : (t.PreviousBodyId.IsValid ? t.PreviousBodyId.ToString() : "none");
             string newName = newBody != null ? newBody.DisplayName : (t.NewBodyId.IsValid ? t.NewBodyId.ToString() : "none");
-
-            GameDebug.Log(DebugCategory.ORBIT,
-                $"SOI transition: {shipName}: {prevName} -> {newName} (t={t.SimTime:F1})",
-                source: "SOI");
+            GameDebug.Log(DebugCategory.ORBIT, $"SOI transition: {shipName}: {prevName} -> {newName} (t={t.SimTime:F1})", source: "SOI");
         }
 
         private void RemoveFromTransitParent(EntityId shipId)
@@ -366,13 +320,13 @@ namespace SpaceSim.Rendering.Bootstrap
                     UnityEngine.Debug.Log($"[OrbitalSandboxCoordinator] Loaded from asset: {starSystemDefinition.DisplayName}");
                     return system;
                 }
-                UnityEngine.Debug.LogWarning("[OrbitalSandboxCoordinator] Asset assigned but loading failed. Falling back to sample.");
+                UnityEngine.Debug.LogWarning("[OrbitalSandboxCoordinator] Asset load failed. Falling back to sample.");
             }
             UnityEngine.Debug.Log("[OrbitalSandboxCoordinator] Using built-in sample star system.");
             return SampleStarSystemFactory.Create(_registry);
         }
 
-        private void SetupUIPanels(SimulationClock clock)
+        private void SetupUIPanels(SimulationClock clock, BodyLabelController labelController)
         {
             if (uiDocument == null) return;
             var uiRoot = uiDocument.rootVisualElement;
@@ -390,6 +344,7 @@ namespace SpaceSim.Rendering.Bootstrap
             var modalController = gameObject.AddComponent<DetailModalController>();
             modalController.Initialize(_registry);
             modalController.SetupUI(uiRoot);
+            modalController.OnLabelsVisibilityChanged = (visible) => labelController.Visible = visible;
             detailsPanel.SetModalController(modalController);
 
             // Create input blocker to prevent camera zoom over UI panels and modal.

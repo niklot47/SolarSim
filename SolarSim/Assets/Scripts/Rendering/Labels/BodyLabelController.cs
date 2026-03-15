@@ -15,6 +15,9 @@ namespace SpaceSim.Rendering.Labels
     /// Creates and manages floating name labels above celestial bodies.
     /// Labels are screen-space GUI rendered on top of the 3D scene.
     /// Visibility is controlled by camera distance thresholds.
+    ///
+    /// The Visible property allows external controllers (e.g. modal dialog)
+    /// to temporarily hide all labels so they don't render on top of UI panels.
     /// </summary>
     public class BodyLabelController : MonoBehaviour
     {
@@ -36,6 +39,13 @@ namespace SpaceSim.Rendering.Labels
 
         private GUIStyle _labelStyle;
         private GUIStyle _shadowStyle;
+
+        /// <summary>
+        /// When false, all IMGUI labels are hidden.
+        /// Set to false when a modal overlay is open to prevent labels
+        /// from rendering on top of the UI.
+        /// </summary>
+        public bool Visible { get; set; } = true;
 
         // Cached body data for label rendering.
         private struct LabelEntry
@@ -79,6 +89,9 @@ namespace SpaceSim.Rendering.Labels
 
         private void OnGUI()
         {
+            // Respect visibility flag (hidden when modal is open).
+            if (!Visible) return;
+
             if (_entries.Count == 0 || _mapRenderer == null) return;
 
             if (_camera == null)

@@ -5,6 +5,7 @@ using SpaceSim.Simulation.Core;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
 using SpaceSim.UI.Localization;
+using SpaceSim.UI.Core;
 
 // Resolve ambiguity with UnityEngine.EntityId (Unity 6+).
 using EntityId = SpaceSim.Shared.Identifiers.EntityId;
@@ -13,7 +14,7 @@ namespace SpaceSim.UI.Panels
 {
     /// <summary>
     /// UI Toolkit controller for the celestial body list panel.
-    /// Populates a hierarchical ListView with icon placeholders and keeps selection
+    /// Populates a hierarchical ListView with PNG icon support and keeps selection
     /// in sync with SelectionService. Supports collapsible panel header.
     /// When collapsed, panel shrinks to show only the header bar.
     /// </summary>
@@ -119,28 +120,14 @@ namespace SpaceSim.UI.Panels
         {
             _isCollapsed = !_isCollapsed;
 
+            // Hide/show the entire panel body (content + padding disappear).
             if (_panelBody != null)
-            {
-                if (_isCollapsed)
-                    _panelBody.AddToClassList("panel-body-hidden");
-                else
-                    _panelBody.RemoveFromClassList("panel-body-hidden");
-            }
+                _panelBody.style.display = _isCollapsed ? DisplayStyle.None : DisplayStyle.Flex;
 
-            // Shrink/expand the panel itself so only header shows when collapsed.
+            // When collapsed, align-self: flex-start shrinks panel height to header only.
+            // When expanded, align-self: stretch fills the full parent height.
             if (_panel != null)
-            {
-                if (_isCollapsed)
-                {
-                    _panel.style.flexGrow = 0;
-                    _panel.style.height = StyleKeyword.Auto;
-                }
-                else
-                {
-                    _panel.style.flexGrow = StyleKeyword.Null;
-                    _panel.style.height = StyleKeyword.Null;
-                }
-            }
+                _panel.style.alignSelf = _isCollapsed ? Align.FlexStart : Align.Stretch;
 
             if (_collapseBtn != null)
                 _collapseBtn.text = _isCollapsed ? "\u25B6" : "\u25BC";
@@ -171,11 +158,12 @@ namespace SpaceSim.UI.Panels
         }
 
         // ---------------------------------------------------------------
-        // List item creation with icon placeholder
+        // List item creation with icon (PNG or fallback circle)
         // ---------------------------------------------------------------
 
         /// <summary>
-        /// Create a list item with a small circular icon placeholder and a label.
+        /// Create a list item with an icon element and a label.
+        /// Icon will display PNG if available, or a colored circle fallback.
         /// </summary>
         private VisualElement MakeListItem()
         {
@@ -196,7 +184,7 @@ namespace SpaceSim.UI.Panels
         }
 
         /// <summary>
-        /// Bind body data to a list item (icon color + indented name).
+        /// Bind body data to a list item (icon + indented name).
         /// </summary>
         private void BindListItem(VisualElement element, int index)
         {
@@ -208,22 +196,45 @@ namespace SpaceSim.UI.Panels
 
             if (label != null)
             {
-                int depth = GetDepth(body);
-                string indent = new string(' ', depth * 3);
-                label.text = $"{indent}{body.DisplayName}";
+                label.text = body.DisplayName;
             }
 
-            // Color the icon placeholder by body type.
             if (icon != null)
             {
                 int depth = GetDepth(body);
                 icon.style.marginLeft = depth * 12;
-                icon.style.backgroundColor = new StyleColor(GetIconColor(body));
+
+                // Try to load PNG icon. Fall back to colored circle.
+                var texture = BodyIconResolver.GetSmallIcon(body);
+                if (texture != null)
+                {
+                    icon.style.backgroundImage = new StyleBackground(texture);
+                    icon.style.backgroundColor = StyleKeyword.None;
+                    // Square icon, no border-radius for PNG.
+                    icon.style.borderTopLeftRadius = 0;
+                    icon.style.borderTopRightRadius = 0;
+                    icon.style.borderBottomLeftRadius = 0;
+                    icon.style.borderBottomRightRadius = 0;
+                    icon.style.width = 16;
+                    icon.style.height = 16;
+                }
+                else
+                {
+                    // Fallback: colored circle.
+                    icon.style.backgroundImage = StyleKeyword.None;
+                    icon.style.backgroundColor = new StyleColor(GetIconColor(body));
+                    icon.style.borderTopLeftRadius = 5;
+                    icon.style.borderTopRightRadius = 5;
+                    icon.style.borderBottomLeftRadius = 5;
+                    icon.style.borderBottomRightRadius = 5;
+                    icon.style.width = 10;
+                    icon.style.height = 10;
+                }
             }
         }
 
         /// <summary>
-        /// Get an icon placeholder color based on body type and role.
+        /// Fallback icon color based on body type and role.
         /// </summary>
         private static Color GetIconColor(CelestialBody body)
         {
@@ -269,14 +280,11 @@ namespace SpaceSim.UI.Panels
             {
                 depth++;
                 current = _registry.GetCelestialBody(current.ParentId);
-                if (depth > 10) break; // Safety limit.
+                if (depth > 10) break;
             }
             return depth;
         }
 
-        /// <summary>
-        /// User clicked in the list — propagate to SelectionService.
-        /// </summary>
         private void OnListSelectionChanged(IEnumerable<object> selection)
         {
             if (_suppressSelectionEvent) return;
@@ -291,9 +299,6 @@ namespace SpaceSim.UI.Panels
             }
         }
 
-        /// <summary>
-        /// Selection changed externally (e.g. scene click) — sync ListView highlight.
-        /// </summary>
         private void OnExternalSelectionChanged(EntityId previousId, EntityId newId)
         {
             if (_listView == null) return;

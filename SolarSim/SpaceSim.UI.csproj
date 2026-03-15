@@ -52,6 +52,7 @@
     <Compile Include="Assets\Scripts\UI\Panels\ObjectListPanelController.cs" />
     <Compile Include="Assets\Scripts\UI\Panels\DetailModalController.cs" />
     <Compile Include="Assets\Scripts\UI\Panels\TimeControlsPanelController.cs" />
+    <Compile Include="Assets\Scripts\UI\Core\BodyIconResolver.cs" />
     <Compile Include="Assets\Scripts\UI\Localization\UIStrings.cs" />
     <Compile Include="Assets\Scripts\UI\Panels\ObjectDetailsPanelController.cs" />
   </ItemGroup>

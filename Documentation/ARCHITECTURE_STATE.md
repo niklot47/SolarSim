@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 12 — UI Update 1 (Green Terminal Theme, Collapsible Panels, Detail Modal, Input Blocking).
+Last updated after: Step 12 — UI Update 1 (Green Terminal Theme, Collapsible Panels, Detail Modal, Icons, Input Blocking).
 
 ------------------------------------------------------------------------
 
@@ -129,17 +129,18 @@ Last updated after: Step 12 — UI Update 1 (Green Terminal Theme, Collapsible P
 - **BodyClickHandler** — raycast click selection (UI Toolkit aware)
 
 ### UI Panels
-- **ObjectListPanelController** — hierarchical body list with icon placeholders (colored circles by body type/role), hover highlight with border, dynamic refresh, collapsible panel header (shrinks to header-only)
-- **ObjectDetailsPanelController** — compact body properties panel with collapsible header (shrinks to header-only), ship role/class/state/destination/SOI/docking/cargo, station kind/attachment/docking/storage/production, "Детальней" button opens modal
-- **DetailModalController** — full-screen modal window with tabbed interface: Детали (full object info with sections), Рынок (placeholder), Задания (placeholder), Модули (placeholder), Ангар (placeholder); close via X button or overlay click; live-updates details tab; styled scrollbar
+- **ObjectListPanelController** — hierarchical body list with PNG icon support (32x32, fallback colored circles), hover highlight with border, dynamic refresh, collapsible panel header (shrinks to header-only width)
+- **ObjectDetailsPanelController** — compact body properties panel with collapsible header (shrinks to header-only), large 300x300 icon display, ship/station fields, "Детальней" button opens modal
+- **DetailModalController** — full-screen modal window with 48x48 icon in header, tabbed interface: Детали/Рынок/Задания/Модули/Ангар; close via X or overlay click; live-updates details tab; hides IMGUI labels while open via BodyLabelController.Visible
 - **TimeControlsPanelController** — pause + x1/x10/x100
-- **UIInputBlocker** — blocks camera zoom/pan/rotate when mouse is over UI panels or modal is open; WheelEvent stoppers on all blocking panels; lives in Rendering layer (depends on OrbitalCameraController)
-- **UIStrings** — Russian strings: body types, ship roles, ship states, station kinds, attachment modes, SOI labels, docking labels, resource names full + short, cargo/storage/production labels, modal tab names, modal section headers, modal placeholders
-- **OrbitalSandboxScreen.uxml/.uss** — green terminal aesthetic with CSS custom properties for theme colors (--ui-color-primary etc.), collapsible panel headers with ▼/▶ buttons, 260px side panels with 4px margin from screen edges, icon placeholders in object list with hover highlight, "Детальней" button in details panel, modal overlay with tabbed detail window, themed scrollbars (8px, green, no arrows)
+- **UIInputBlocker** — blocks camera zoom/pan/rotate when mouse is over UI panels or modal is open; WheelEvent stoppers on all blocking panels; lives in Rendering layer
+- **BodyIconResolver** — maps body types to PNG icon paths, loads via Resources.Load from Icons/32x32/ and Icons/300x300/
+- **UIStrings** — Russian strings: all UI labels, modal tabs/sections/placeholders
+- **OrbitalSandboxScreen.uxml/.uss** — green terminal aesthetic with CSS custom properties for theme colors, collapsible panels, themed scrollbars (8px green), list hover highlight, detail/modal icon elements
 
 ### Camera and Labels
-- **OrbitalCameraController** — pan/zoom/rotate/smooth focus (Input System), BlockInput property to suppress input when UI has focus
-- **BodyLabelController** — IMGUI labels with zoom fade
+- **OrbitalCameraController** — pan/zoom/rotate/smooth focus (Input System), `BlockInput` property suppresses all input when UI has focus
+- **BodyLabelController** — IMGUI labels with zoom fade, `Visible` property hides labels when modal is open (prevents IMGUI rendering over UI Toolkit panels)
 
 ### World Units and Scaling
 - **WorldUnits** — Mm distances, sim-s time
@@ -297,7 +298,7 @@ Traders pick a random different station. No demand/supply-driven routing yet.
 ### Known technical debt
 - SampleStarSystemFactory uses Russian display names (should use localization keys)
 - Unity 6 EntityId conflict requires using-alias in Rendering/UI files
-- OnGUI labels — acceptable for MVP
+- OnGUI labels — acceptable for MVP, hidden when modal is open via Visible flag
 - Ship travel is linear interpolation (not physically realistic)
 - Docking approach is linear interpolation in local space (no curved paths)
 - Transit parenting is a UI convenience hack

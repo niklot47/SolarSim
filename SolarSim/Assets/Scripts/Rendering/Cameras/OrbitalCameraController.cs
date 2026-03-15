@@ -9,8 +9,7 @@ namespace SpaceSim.Rendering.Cameras
     /// Uses the new Input System package.
     ///
     /// BlockInput property allows UI controllers to suppress camera input
-    /// when the mouse is over UI panels or a modal is open, preventing
-    /// accidental zoom while scrolling UI content.
+    /// when the mouse is over UI panels or a modal is open.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class OrbitalCameraController : MonoBehaviour
@@ -38,7 +37,6 @@ namespace SpaceSim.Rendering.Cameras
         private Transform _focusTarget;
         private Mouse _mouse;
 
-        // Smooth transition state.
         private bool _isSmoothFocusing;
         private Vector3 _smoothTargetPoint;
 
@@ -47,14 +45,10 @@ namespace SpaceSim.Rendering.Cameras
 
         /// <summary>
         /// When true, all camera input (zoom, pan, rotate) is suppressed.
-        /// Set by UI controllers when mouse is over panels or modal is open.
+        /// Set by UIInputBlocker when mouse is over panels or modal is open.
         /// </summary>
         public bool BlockInput { get; set; }
 
-        /// <summary>
-        /// Set a transform to follow. Camera will orbit around it.
-        /// Pass null to stop following.
-        /// </summary>
         public void SetFocusTarget(Transform target)
         {
             _focusTarget = target;
@@ -63,9 +57,6 @@ namespace SpaceSim.Rendering.Cameras
             _isSmoothFocusing = false;
         }
 
-        /// <summary>
-        /// Smoothly transition camera focus to a target transform.
-        /// </summary>
         public void FocusSmooth(Transform target)
         {
             _focusTarget = target;
@@ -76,9 +67,6 @@ namespace SpaceSim.Rendering.Cameras
             }
         }
 
-        /// <summary>
-        /// Set a static focus point (no target transform).
-        /// </summary>
         public void SetFocusPoint(Vector3 point)
         {
             _focusTarget = null;
@@ -96,11 +84,9 @@ namespace SpaceSim.Rendering.Cameras
             _mouse = Mouse.current;
             if (_mouse == null) return;
 
-            // Update smooth focus destination from moving target.
             if (_focusTarget != null)
                 _smoothTargetPoint = _focusTarget.position;
 
-            // Smooth lerp toward target.
             if (_isSmoothFocusing)
             {
                 _focusPoint = Vector3.Lerp(_focusPoint, _smoothTargetPoint, focusLerpSpeed * Time.deltaTime);
@@ -115,7 +101,6 @@ namespace SpaceSim.Rendering.Cameras
                 _focusPoint = _focusTarget.position;
             }
 
-            // Skip input processing when UI has focus.
             if (!BlockInput)
             {
                 HandleZoom();

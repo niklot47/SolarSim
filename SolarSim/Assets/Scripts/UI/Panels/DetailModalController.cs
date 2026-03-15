@@ -4,6 +4,7 @@ using UnityEngine.UIElements;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
 using SpaceSim.UI.Localization;
+using SpaceSim.UI.Core;
 
 // Resolve ambiguity with UnityEngine.EntityId (Unity 6+).
 using EntityId = SpaceSim.Shared.Identifiers.EntityId;
@@ -12,9 +13,8 @@ namespace SpaceSim.UI.Panels
 {
     /// <summary>
     /// Controls the modal detail window that opens over the center of the screen.
-    /// Shows full object information organized into tabs:
-    /// Details, Market, Missions, Modules, Hangar.
-    /// Currently only Details tab has content; others are placeholders.
+    /// Shows full object information organized into tabs.
+    /// Hides IMGUI labels while open via BodyLabelController reference.
     /// </summary>
     public class DetailModalController : MonoBehaviour
     {
@@ -22,6 +22,7 @@ namespace SpaceSim.UI.Panels
 
         private VisualElement _root;
         private VisualElement _overlay;
+        private VisualElement _iconElement;
         private Label _titleLabel;
         private Label _subtitleLabel;
         private Button _closeBtn;
@@ -43,13 +44,18 @@ namespace SpaceSim.UI.Panels
         private EntityId _currentEntityId = EntityId.None;
         private int _activeTabIndex;
 
-        // Reusable string builder.
         private readonly StringBuilder _sb = new StringBuilder();
 
-        // Tab definitions for iteration.
         private Button[] _tabButtons;
         private VisualElement[] _tabContents;
         private string[] _tabNames;
+
+        /// <summary>
+        /// Callback to show/hide IMGUI labels when modal opens/closes.
+        /// Set by coordinator: (visible) => labelController.Visible = visible.
+        /// Avoids direct dependency on Rendering assembly.
+        /// </summary>
+        public System.Action<bool> OnLabelsVisibilityChanged { get; set; }
 
         public void Initialize(WorldRegistry registry)
         {
@@ -62,6 +68,7 @@ namespace SpaceSim.UI.Panels
             if (_root == null) return;
 
             _overlay = _root.Q<VisualElement>("modal-overlay");
+            _iconElement = _root.Q<VisualElement>("modal-icon");
 
             _titleLabel = _root.Q<Label>("modal-title");
             _subtitleLabel = _root.Q<Label>("modal-subtitle");
@@ -70,12 +77,10 @@ namespace SpaceSim.UI.Panels
             if (_closeBtn != null)
                 _closeBtn.clicked += Close;
 
-            // Close when clicking overlay background (outside window).
             if (_overlay != null)
             {
                 _overlay.RegisterCallback<ClickEvent>(evt =>
                 {
-                    // Only close if clicking the overlay itself, not the window.
                     if (evt.target == _overlay)
                         Close();
                 });
@@ -98,14 +103,10 @@ namespace SpaceSim.UI.Panels
             _tabContents = new[] { _contentDetails, _contentMarket, _contentMissions, _contentModules, _contentHangar };
             _tabNames = new[]
             {
-                "modal.tab.details",
-                "modal.tab.market",
-                "modal.tab.missions",
-                "modal.tab.modules",
-                "modal.tab.hangar"
+                "modal.tab.details", "modal.tab.market", "modal.tab.missions",
+                "modal.tab.modules", "modal.tab.hangar"
             };
 
-            // Set tab labels from localization.
             for (int i = 0; i < _tabButtons.Length; i++)
             {
                 if (_tabButtons[i] != null)
@@ -116,16 +117,12 @@ namespace SpaceSim.UI.Panels
                 }
             }
 
-            // Set placeholder labels for empty tabs.
             SetPlaceholderText(_contentMarket, "modal.placeholder.market");
             SetPlaceholderText(_contentMissions, "modal.placeholder.missions");
             SetPlaceholderText(_contentModules, "modal.placeholder.modules");
             SetPlaceholderText(_contentHangar, "modal.placeholder.hangar");
         }
 
-        /// <summary>
-        /// Open the modal for a specific entity.
-        /// </summary>
         public void Open(EntityId entityId)
         {
             var body = _registry?.GetCelestialBody(entityId);
@@ -133,48 +130,62 @@ namespace SpaceSim.UI.Panels
 
             _currentEntityId = entityId;
 
-            // Set header.
             if (_titleLabel != null)
                 _titleLabel.text = body.DisplayName;
             if (_subtitleLabel != null)
                 _subtitleLabel.text = UIStrings.GetBodyTypeName(body.BodyType.ToString());
 
-            // Build details tab content.
-            BuildDetailsTab(body);
+            // Set icon in modal header.
+            UpdateModalIcon(body);
 
-            // Show first tab.
+            BuildDetailsTab(body);
             SwitchTab(0);
 
-            // Show overlay.
             if (_overlay != null)
                 _overlay.style.display = DisplayStyle.Flex;
+
+            // Hide IMGUI labels while modal is open.
+            OnLabelsVisibilityChanged?.Invoke(false);
         }
 
-        /// <summary>
-        /// Close the modal.
-        /// </summary>
         public void Close()
         {
             _currentEntityId = EntityId.None;
             if (_overlay != null)
                 _overlay.style.display = DisplayStyle.None;
+
+            // Restore IMGUI labels.
+            OnLabelsVisibilityChanged?.Invoke(true);
         }
 
-        /// <summary>Whether the modal is currently open.</summary>
         public bool IsOpen => _overlay != null && _overlay.resolvedStyle.display == DisplayStyle.Flex;
 
         private void Update()
         {
-            // Live-update modal details if open.
             if (!_currentEntityId.IsValid) return;
             if (!IsOpen) return;
 
             var body = _registry?.GetCelestialBody(_currentEntityId);
             if (body == null) return;
 
-            // Only rebuild if on the details tab.
             if (_activeTabIndex == 0)
                 BuildDetailsTab(body);
+        }
+
+        private void UpdateModalIcon(CelestialBody body)
+        {
+            if (_iconElement == null) return;
+
+            var texture = BodyIconResolver.GetLargeIcon(body);
+            if (texture != null)
+            {
+                _iconElement.style.backgroundImage = new StyleBackground(texture);
+                _iconElement.style.display = DisplayStyle.Flex;
+            }
+            else
+            {
+                _iconElement.style.display = DisplayStyle.None;
+            }
         }
 
         // ---------------------------------------------------------------
@@ -214,7 +225,6 @@ namespace SpaceSim.UI.Panels
             if (_contentDetails == null) return;
             _contentDetails.Clear();
 
-            // --- Identity section ---
             AddSectionHeader(_contentDetails, "modal.section.identity");
             AddDetailRow(_contentDetails, UIStrings.Get("panel.details.name"), body.DisplayName);
             AddDetailRow(_contentDetails, UIStrings.Get("panel.details.type"),
@@ -227,34 +237,24 @@ namespace SpaceSim.UI.Panels
                     parent != null ? parent.DisplayName : body.ParentId.ToString());
             }
 
-            // --- Physical section ---
             AddSectionHeader(_contentDetails, "modal.section.physical");
-            AddDetailRow(_contentDetails, UIStrings.Get("panel.details.radius"),
-                $"{body.Radius:F2} Mm");
+            AddDetailRow(_contentDetails, UIStrings.Get("panel.details.radius"), $"{body.Radius:F2} Mm");
 
             if (body.SOIRadius.HasValue)
-            {
-                AddDetailRow(_contentDetails, UIStrings.Get("panel.details.soi_radius"),
-                    $"{body.SOIRadius.Value:F1} Mm");
-            }
+                AddDetailRow(_contentDetails, UIStrings.Get("panel.details.soi_radius"), $"{body.SOIRadius.Value:F1} Mm");
 
-            // --- Orbit section ---
             if (body.Orbit != null)
             {
                 AddSectionHeader(_contentDetails, "modal.section.orbit");
-                AddDetailRow(_contentDetails, UIStrings.Get("modal.details.orbit_radius"),
-                    $"{body.Orbit.SemiMajorAxis:F1} Mm");
-                AddDetailRow(_contentDetails, UIStrings.Get("modal.details.orbit_period"),
-                    $"{body.Orbit.OrbitalPeriod:F1} sim-s");
+                AddDetailRow(_contentDetails, UIStrings.Get("modal.details.orbit_radius"), $"{body.Orbit.SemiMajorAxis:F1} Mm");
+                AddDetailRow(_contentDetails, UIStrings.Get("modal.details.orbit_period"), $"{body.Orbit.OrbitalPeriod:F1} sim-s");
                 AddDetailRow(_contentDetails, UIStrings.Get("panel.details.attachment"),
                     UIStrings.GetAttachmentModeName(body.AttachmentMode.ToString()));
             }
 
-            // --- Ship section ---
             if (body.BodyType == CelestialBodyType.Ship && body.ShipInfo != null)
             {
                 var info = body.ShipInfo;
-
                 AddDetailRow(_contentDetails, UIStrings.Get("panel.details.role"),
                     UIStrings.GetShipRoleName(info.Role.ToString()));
                 AddDetailRow(_contentDetails, UIStrings.Get("panel.details.ship_class"),
@@ -276,7 +276,6 @@ namespace SpaceSim.UI.Panels
                         soiBody != null ? soiBody.DisplayName : info.CurrentSOIBodyId.ToString());
                 }
 
-                // Docking info.
                 if (info.IsDocked || info.State == ShipState.ApproachingStation)
                 {
                     AddSectionHeader(_contentDetails, "modal.section.docking");
@@ -287,53 +286,40 @@ namespace SpaceSim.UI.Panels
                             station != null ? station.DisplayName : info.DockedAtStationId.ToString());
                     }
                     if (info.IsDocked)
-                    {
-                        AddDetailRow(_contentDetails, UIStrings.Get("panel.details.docking_port"),
-                            $"#{info.DockedPortId}");
-                    }
+                        AddDetailRow(_contentDetails, UIStrings.Get("panel.details.docking_port"), $"#{info.DockedPortId}");
                 }
 
-                // Cargo info.
                 if (info.Cargo != null)
                 {
                     AddSectionHeader(_contentDetails, "modal.section.economy");
-                    AddDetailRow(_contentDetails, UIStrings.Get("panel.details.cargo"),
-                        FormatCargo(info.Cargo));
+                    AddDetailRow(_contentDetails, UIStrings.Get("panel.details.cargo"), FormatCargo(info.Cargo));
                 }
             }
 
-            // --- Station section ---
             if (body.BodyType == CelestialBodyType.Station && body.StationInfo != null)
             {
                 var si = body.StationInfo;
-
                 AddDetailRow(_contentDetails, UIStrings.Get("panel.details.station_kind"),
                     UIStrings.GetStationKindName(si.Kind.ToString()));
 
-                // Docking.
                 if (si.HasDocking)
                 {
                     AddSectionHeader(_contentDetails, "modal.section.docking");
-                    AddDetailRow(_contentDetails, UIStrings.Get("panel.details.docking_ports"),
-                        si.Docking.TotalPorts.ToString());
+                    AddDetailRow(_contentDetails, UIStrings.Get("panel.details.docking_ports"), si.Docking.TotalPorts.ToString());
                     AddDetailRow(_contentDetails, UIStrings.Get("panel.details.ports_occupied"),
                         $"{si.Docking.OccupiedCount} / {si.Docking.TotalPorts}");
                 }
 
-                // Storage.
                 if (si.HasStorage)
                 {
                     AddSectionHeader(_contentDetails, "modal.section.economy");
-                    AddDetailRow(_contentDetails, UIStrings.Get("panel.details.storage"),
-                        FormatStorage(si.Storage));
+                    AddDetailRow(_contentDetails, UIStrings.Get("panel.details.storage"), FormatStorage(si.Storage));
                 }
 
-                // Production.
                 if (si.HasProduction)
                 {
                     AddSectionHeader(_contentDetails, "modal.section.production");
-                    AddDetailRow(_contentDetails, UIStrings.Get("panel.details.production"),
-                        FormatProduction(si.Production));
+                    AddDetailRow(_contentDetails, UIStrings.Get("panel.details.production"), FormatProduction(si.Production));
                 }
             }
         }
@@ -380,15 +366,9 @@ namespace SpaceSim.UI.Panels
             container.Add(label);
         }
 
-        // ---------------------------------------------------------------
-        // Formatting (shared with details panel)
-        // ---------------------------------------------------------------
-
         private string FormatCargo(ShipCargo cargo)
         {
-            if (cargo == null || cargo.IsEmpty)
-                return UIStrings.Get("panel.details.cargo_empty");
-
+            if (cargo == null || cargo.IsEmpty) return UIStrings.Get("panel.details.cargo_empty");
             _sb.Clear();
             bool first = true;
             foreach (var type in cargo.GetNonEmptyTypes())
@@ -405,37 +385,28 @@ namespace SpaceSim.UI.Panels
 
         private string FormatStorage(StationStorage storage)
         {
-            if (storage == null)
-                return UIStrings.Get("panel.details.storage_empty");
-
+            if (storage == null) return UIStrings.Get("panel.details.storage_empty");
             _sb.Clear();
-            bool first = true;
-            bool any = false;
+            bool first = true; bool any = false;
             foreach (var type in storage.GetNonEmptyTypes())
             {
                 if (!first) _sb.Append('\n');
                 _sb.Append(UIStrings.GetResourceShortName(type.ToString()));
                 _sb.Append(": ");
                 _sb.Append(storage.GetAmount(type).ToString("F0"));
-                first = false;
-                any = true;
+                first = false; any = true;
             }
-
             return any ? _sb.ToString() : UIStrings.Get("panel.details.storage_empty");
         }
 
         private string FormatProduction(StationProductionState prod)
         {
-            if (prod == null || !prod.HasRecipe)
-                return UIStrings.Get("panel.details.production_none");
-
+            if (prod == null || !prod.HasRecipe) return UIStrings.Get("panel.details.production_none");
             var recipe = prod.Recipe;
             _sb.Clear();
-
             string outputName = UIStrings.GetResourceShortName(recipe.OutputResource.ToString());
             double rate = recipe.OutputAmountPerCycle / recipe.CycleTime;
             _sb.Append($"{outputName} +{rate:F1}/c");
-
             if (recipe.HasInputs)
             {
                 foreach (var input in recipe.InputsPerCycle)
@@ -445,12 +416,10 @@ namespace SpaceSim.UI.Panels
                     _sb.Append($"\n\u2190 {inputName} -{inputRate:F1}/c");
                 }
             }
-
             if (prod.IsStalled)
                 _sb.Append($"\n[{UIStrings.Get("panel.details.production_stalled")}]");
             else
                 _sb.Append($"\n[{prod.ProgressFraction:P0}]");
-
             return _sb.ToString();
         }
     }

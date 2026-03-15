@@ -35,6 +35,9 @@
             <ui:VisualElement name="right-panel-body" class="panel-body">
                 <ui:Label name="details-no-selection" class="no-selection-text" />
 
+                <!-- Large icon for selected object (300x300 PNG) -->
+                <ui:VisualElement name="details-icon" class="details-icon" />
+
                 <ui:VisualElement name="details-content" class="details-content">
                     <!-- Name -->
                     <ui:VisualElement class="details-row">
@@ -76,7 +79,7 @@
                         </ui:VisualElement>
                     </ui:VisualElement>
 
-                    <!-- SOI Radius (for bodies with SOI) -->
+                    <!-- SOI Radius -->
                     <ui:VisualElement name="details-soiradius-row" class="details-row">
                         <ui:VisualElement class="details-cell-label">
                             <ui:Label name="details-soiradius-label" class="details-label" />
@@ -126,7 +129,7 @@
                         </ui:VisualElement>
                     </ui:VisualElement>
 
-                    <!-- Ship: Dominant SOI body -->
+                    <!-- Ship: SOI -->
                     <ui:VisualElement name="details-soi-row" class="details-row">
                         <ui:VisualElement class="details-cell-label">
                             <ui:Label name="details-soi-label" class="details-label" />
@@ -186,7 +189,7 @@
                         </ui:VisualElement>
                     </ui:VisualElement>
 
-                    <!-- Station: Docking Ports count -->
+                    <!-- Station: Ports -->
                     <ui:VisualElement name="details-station-ports-row" class="details-row">
                         <ui:VisualElement class="details-cell-label">
                             <ui:Label name="details-station-ports-label" class="details-label" />
@@ -196,7 +199,7 @@
                         </ui:VisualElement>
                     </ui:VisualElement>
 
-                    <!-- Station: Ports Occupied -->
+                    <!-- Station: Occupied -->
                     <ui:VisualElement name="details-station-occupied-row" class="details-row">
                         <ui:VisualElement class="details-cell-label">
                             <ui:Label name="details-station-occupied-label" class="details-label" />
@@ -235,8 +238,9 @@
         <!-- ========== MODAL: Detailed object view ========== -->
         <ui:VisualElement name="modal-overlay" class="modal-overlay" picking-mode="Position" style="display: none;">
             <ui:VisualElement name="modal-window" class="modal-window">
-                <!-- Header -->
+                <!-- Header with icon -->
                 <ui:VisualElement class="modal-header">
+                    <ui:VisualElement name="modal-icon" class="modal-icon" />
                     <ui:VisualElement class="modal-header-text">
                         <ui:Label name="modal-title" class="modal-title" />
                         <ui:Label name="modal-subtitle" class="modal-subtitle" />
@@ -255,21 +259,16 @@
 
                 <!-- Tab content area -->
                 <ui:ScrollView name="modal-body" class="modal-body">
-                    <!-- Details tab content -->
                     <ui:VisualElement name="modal-content-details" class="modal-tab-content" />
-                    <!-- Market tab content (placeholder) -->
                     <ui:VisualElement name="modal-content-market" class="modal-tab-content modal-tab-content-hidden">
                         <ui:Label class="modal-empty-text" />
                     </ui:VisualElement>
-                    <!-- Missions tab content (placeholder) -->
                     <ui:VisualElement name="modal-content-missions" class="modal-tab-content modal-tab-content-hidden">
                         <ui:Label class="modal-empty-text" />
                     </ui:VisualElement>
-                    <!-- Modules tab content (placeholder) -->
                     <ui:VisualElement name="modal-content-modules" class="modal-tab-content modal-tab-content-hidden">
                         <ui:Label class="modal-empty-text" />
                     </ui:VisualElement>
-                    <!-- Hangar tab content (placeholder) -->
                     <ui:VisualElement name="modal-content-hangar" class="modal-tab-content modal-tab-content-hidden">
                         <ui:Label class="modal-empty-text" />
                     </ui:VisualElement>
