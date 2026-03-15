@@ -15,6 +15,15 @@ namespace SpaceSim.World.Entities
         Travelling,
 
         /// <summary>Ship has arrived at its destination.</summary>
-        Arrived
+        Arrived,
+
+        /// <summary>Ship is approaching a station docking port.</summary>
+        ApproachingStation,
+
+        /// <summary>Ship is in the process of docking (final attachment).</summary>
+        Docking,
+
+        /// <summary>Ship is docked at a station.</summary>
+        Docked
     }
 }

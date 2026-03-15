@@ -55,5 +55,10 @@ namespace SpaceSim.Data.Definitions
         [Tooltip("Longitude in degrees (-180 to 180).")]
         [Range(-180f, 180f)]
         public double SurfaceLongitudeDeg = 0.0;
+
+        [Header("Docking (Orbital stations only)")]
+        [Tooltip("Number of docking ports. 0 = no docking capability.")]
+        [Min(0)]
+        public int DockingPortCount = 3;
     }
 }

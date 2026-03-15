@@ -80,6 +80,9 @@ namespace SpaceSim.Simulation.Core
         // Surface station fields.
         public double SurfaceLatitudeDeg;
         public double SurfaceLongitudeDeg;
+
+        // Docking.
+        public int DockingPortCount;
     }
 
     /// <summary>
@@ -261,6 +264,14 @@ namespace SpaceSim.Simulation.Core
             var kind = (StationKind)std.Kind;
             bool isOrbital = kind == StationKind.Orbital;
 
+            var stationInfo = new StationInfo(kind, std.SurfaceLatitudeDeg, std.SurfaceLongitudeDeg);
+
+            // Initialize docking ports for any station type (orbital or surface).
+            if (std.DockingPortCount > 0)
+            {
+                stationInfo.InitializeDocking(std.DockingPortCount);
+            }
+
             var station = new CelestialBody(std.DisplayName, CelestialBodyType.Station)
             {
                 Radius = std.Radius,
@@ -275,7 +286,7 @@ namespace SpaceSim.Simulation.Core
                 Spin = isOrbital && std.RotationPeriod > 0.0
                     ? SpinDefinition.Simple(std.RotationPeriod)
                     : new SpinDefinition(),
-                StationInfo = new StationInfo(kind, std.SurfaceLatitudeDeg, std.SurfaceLongitudeDeg)
+                StationInfo = stationInfo
             };
 
             if (parentId.IsValid)

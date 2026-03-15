@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using SpaceSim.Shared.Identifiers;
 using SpaceSim.Shared.Math;
+using SpaceSim.Simulation.Docking;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
 
@@ -9,8 +10,16 @@ namespace SpaceSim.Simulation.Ships
 {
     /// <summary>
     /// Automatically assigns new routes to NPC ships that have finished travelling.
-    /// Runs each tick after ShipMovementSystem.Update().
+    /// Also handles automatic docking at stations and undocking after wait time.
+    /// Runs each tick after ShipMovementSystem.Update() and DockingSystem.Update().
     /// Pure C# — no UnityEngine dependency.
+    ///
+    /// Docking behavior:
+    /// - Orbital station: ship arrives at station orbit → auto-dock after 0.5s delay.
+    /// - Surface station: ship arrives at parent body orbit (travel destination = surface station,
+    ///   but ShipMovementSystem parents to station's parent body). NPCShipScheduler detects
+    ///   the ship was targeting a surface station and requests docking.
+    /// - After undock: _pendingDeparture prevents re-docking loop, ship departs immediately.
     /// </summary>
     public class NPCShipScheduler
     {
@@ -27,13 +36,31 @@ namespace SpaceSim.Simulation.Ships
         /// <summary>Delay after arrival before scheduling next route (sim-seconds).</summary>
         public double IdleDelay { get; set; }
 
+        /// <summary>How long NPC ships stay docked at stations (sim-seconds).</summary>
+        public double DockingWaitTime { get; set; } = 5.0;
+
         private readonly Dictionary<EntityId, double> _arrivalTimes = new Dictionary<EntityId, double>();
         private readonly Dictionary<EntityId, EntityId> _lastPatrolOrigin = new Dictionary<EntityId, EntityId>();
+
+        /// <summary>
+        /// Ships that just undocked and need to leave immediately.
+        /// Prevents the re-docking loop: undock → Orbiting station → re-dock.
+        /// </summary>
+        private readonly HashSet<EntityId> _pendingDeparture = new HashSet<EntityId>();
+
+        /// <summary>
+        /// Tracks which surface station a ship should dock at after arriving at a planet.
+        /// Key: shipId, Value: surface station EntityId.
+        /// Set when ship's travel destination is a surface station.
+        /// </summary>
+        private readonly Dictionary<EntityId, EntityId> _pendingSurfaceDock = new Dictionary<EntityId, EntityId>();
+
         private readonly Random _rng;
         private readonly List<EntityId> _destinationCandidates = new List<EntityId>();
         private bool _candidatesDirty = true;
 
         private Func<EntityId, double, SimVec3> _positionResolver;
+        private DockingSystem _dockingSystem;
 
         public event Action<EntityId> OnRouteScheduled;
 
@@ -53,6 +80,9 @@ namespace SpaceSim.Simulation.Ships
             MinTravelDuration = minTravelDuration > 0.0 ? minTravelDuration : 3.0;
             IdleDelay = idleDelay;
             _rng = new Random(seed);
+
+            // Listen for ship arrivals to detect surface station destinations.
+            _movementSystem.OnShipArrived += OnShipArrivedAtDestination;
         }
 
         public void SetPositionResolver(Func<EntityId, double, SimVec3> resolver)
@@ -60,9 +90,39 @@ namespace SpaceSim.Simulation.Ships
             _positionResolver = resolver;
         }
 
+        public void SetDockingSystem(DockingSystem dockingSystem)
+        {
+            _dockingSystem = dockingSystem;
+        }
+
         public void InvalidateDestinationCache()
         {
             _candidatesDirty = true;
+        }
+
+        /// <summary>
+        /// Called when a ship arrives at its travel destination.
+        /// If the destination is a surface station, record it for pending surface dock.
+        /// </summary>
+        private void OnShipArrivedAtDestination(EntityId shipId, EntityId destinationId)
+        {
+            var ship = _registry.GetCelestialBody(shipId);
+            if (ship?.ShipInfo == null) return;
+            if (ship.ShipInfo.Role == ShipRole.Player) return;
+
+            var destination = _registry.GetCelestialBody(destinationId);
+            if (destination == null) return;
+
+            // If destination is a surface station with docking, mark for surface dock.
+            if (destination.BodyType == CelestialBodyType.Station &&
+                destination.StationInfo != null &&
+                destination.StationInfo.Kind == StationKind.Surface &&
+                destination.StationInfo.HasDocking)
+            {
+                // Ship arrived at the surface station's parent body orbit.
+                // Mark it for surface docking on the next scheduler tick.
+                _pendingSurfaceDock[shipId] = destinationId;
+            }
         }
 
         public void Update()
@@ -83,39 +143,163 @@ namespace SpaceSim.Simulation.Ships
                     continue;
                 if (body.ShipInfo.Role == ShipRole.Player)
                     continue;
+
+                // Handle docked ships — check if wait time elapsed, then undock.
+                if (body.ShipInfo.State == ShipState.Docked && _dockingSystem != null)
+                {
+                    HandleDockedShip(body, simTime);
+                    continue;
+                }
+
+                // Skip non-Orbiting ships.
                 if (body.ShipInfo.State != ShipState.Orbiting)
                     continue;
 
-                if (!_arrivalTimes.ContainsKey(body.Id))
-                    _arrivalTimes[body.Id] = simTime;
-
-                double arrivedAt = _arrivalTimes[body.Id];
-                if (simTime - arrivedAt < IdleDelay)
-                    continue;
-
-                EntityId destination = PickDestination(body);
-                if (!destination.IsValid)
-                    continue;
-
-                EntityId currentParent = body.ParentId;
-                double duration = ComputeTravelDuration(body, destination, simTime);
-
-                bool started = _movementSystem.StartRoute(
-                    body.Id, destination, simTime, duration, _positionResolver);
-
-                if (started)
+                // PRIORITY 1: Ship just undocked — must leave immediately, do NOT re-dock.
+                if (_pendingDeparture.Contains(body.Id))
                 {
-                    _lastPatrolOrigin[body.Id] = currentParent;
-                    _arrivalTimes.Remove(body.Id);
-                    OnRouteScheduled?.Invoke(body.Id);
+                    ScheduleDepartureFromStation(body, simTime);
+                    continue;
                 }
+
+                // PRIORITY 2: Ship has a pending surface dock (arrived at planet, needs to dock at surface station).
+                if (_dockingSystem != null && _pendingSurfaceDock.TryGetValue(body.Id, out EntityId surfaceStationId))
+                {
+                    if (!_arrivalTimes.ContainsKey(body.Id))
+                        _arrivalTimes[body.Id] = simTime;
+
+                    double arrivedAt = _arrivalTimes[body.Id];
+                    if (simTime - arrivedAt >= 0.5)
+                    {
+                        bool docked = _dockingSystem.RequestDocking(
+                            body.Id, surfaceStationId, simTime, _positionResolver);
+                        if (docked)
+                        {
+                            _arrivalTimes.Remove(body.Id);
+                            _pendingSurfaceDock.Remove(body.Id);
+                        }
+                        else
+                        {
+                            // Port unavailable — give up on surface dock, schedule normal route.
+                            _pendingSurfaceDock.Remove(body.Id);
+                            ScheduleNewRouteIfReady(body, simTime);
+                        }
+                    }
+                    continue;
+                }
+
+                // PRIORITY 3: Ship orbiting a dockable orbital station — auto-dock.
+                if (_dockingSystem != null)
+                {
+                    var parent = _registry.GetCelestialBody(body.ParentId);
+                    if (parent != null && parent.BodyType == CelestialBodyType.Station &&
+                        parent.StationInfo != null && parent.StationInfo.HasDocking &&
+                        parent.StationInfo.Kind == StationKind.Orbital)
+                    {
+                        HandleOrbitalStationOrbit(body, parent, simTime);
+                        continue;
+                    }
+                }
+
+                // Normal Orbiting behavior at non-station bodies.
+                ScheduleNewRouteIfReady(body, simTime);
             }
         }
 
         /// <summary>
-        /// Compute travel duration. Uses local-frame distance for local routes,
-        /// global distance for interplanetary routes.
+        /// Handle ship orbiting an orbital station — request docking after brief delay.
         /// </summary>
+        private void HandleOrbitalStationOrbit(CelestialBody ship, CelestialBody station, double simTime)
+        {
+            if (!_arrivalTimes.ContainsKey(ship.Id))
+                _arrivalTimes[ship.Id] = simTime;
+
+            double arrivedAt = _arrivalTimes[ship.Id];
+            if (simTime - arrivedAt < 0.5)
+                return;
+
+            bool docked = _dockingSystem.RequestDocking(
+                ship.Id, station.Id, simTime, _positionResolver);
+
+            if (docked)
+            {
+                _arrivalTimes.Remove(ship.Id);
+            }
+            else
+            {
+                // No free port — leave the station.
+                ScheduleNewRouteIfReady(ship, simTime);
+            }
+        }
+
+        private void HandleDockedShip(CelestialBody ship, double simTime)
+        {
+            double dockedAt = ship.ShipInfo.DockedAtTime;
+            if (simTime - dockedAt < DockingWaitTime) return;
+
+            bool undocked = _dockingSystem.Undock(ship.Id, simTime);
+            if (undocked)
+            {
+                // Mark for immediate departure — prevents re-docking loop.
+                _pendingDeparture.Add(ship.Id);
+                _arrivalTimes[ship.Id] = simTime;
+            }
+        }
+
+        /// <summary>
+        /// Ship just undocked — schedule a new route immediately (skip idle delay).
+        /// </summary>
+        private void ScheduleDepartureFromStation(CelestialBody ship, double simTime)
+        {
+            EntityId destination = PickDestination(ship);
+            if (!destination.IsValid)
+                return;
+
+            EntityId currentParent = ship.ParentId;
+            double duration = ComputeTravelDuration(ship, destination, simTime);
+
+            bool started = _movementSystem.StartRoute(
+                ship.Id, destination, simTime, duration, _positionResolver);
+
+            if (started)
+            {
+                _lastPatrolOrigin[ship.Id] = currentParent;
+                _arrivalTimes.Remove(ship.Id);
+                _pendingDeparture.Remove(ship.Id);
+                _pendingSurfaceDock.Remove(ship.Id);
+                OnRouteScheduled?.Invoke(ship.Id);
+            }
+        }
+
+        private void ScheduleNewRouteIfReady(CelestialBody ship, double simTime)
+        {
+            if (!_arrivalTimes.ContainsKey(ship.Id))
+                _arrivalTimes[ship.Id] = simTime;
+
+            double arrivedAt = _arrivalTimes[ship.Id];
+            if (simTime - arrivedAt < IdleDelay)
+                return;
+
+            EntityId destination = PickDestination(ship);
+            if (!destination.IsValid)
+                return;
+
+            EntityId currentParent = ship.ParentId;
+            double duration = ComputeTravelDuration(ship, destination, simTime);
+
+            bool started = _movementSystem.StartRoute(
+                ship.Id, destination, simTime, duration, _positionResolver);
+
+            if (started)
+            {
+                _lastPatrolOrigin[ship.Id] = currentParent;
+                _arrivalTimes.Remove(ship.Id);
+                _pendingDeparture.Remove(ship.Id);
+                _pendingSurfaceDock.Remove(ship.Id);
+                OnRouteScheduled?.Invoke(ship.Id);
+            }
+        }
+
         private double ComputeTravelDuration(CelestialBody ship, EntityId destinationId, double simTime)
         {
             double speed = TravelSpeed > 0.0 ? TravelSpeed : 2.0;
@@ -131,26 +315,21 @@ namespace SpaceSim.Simulation.Ships
             if (origin == null)
                 return MinTravelDuration;
 
-            // Get ship's world position.
             SimVec3 shipPos = ComputeShipWorldPos(ship, simTime);
 
-            // Determine if this is a local route.
             EntityId localFrameBodyId = EntityId.None;
             bool isLocal = false;
 
-            // Case 1: destination is parent of origin (Moon -> Planet).
             if (origin.ParentId == destinationId)
             {
                 localFrameBodyId = destinationId;
                 isLocal = true;
             }
-            // Case 2: origin is parent of destination (Planet -> Moon).
             else if (destination.ParentId == origin.Id)
             {
                 localFrameBodyId = origin.Id;
                 isLocal = true;
             }
-            // Case 3: siblings (Moon1 -> Moon2).
             else if (origin.ParentId.IsValid && origin.ParentId == destination.ParentId)
             {
                 localFrameBodyId = origin.ParentId;
@@ -161,7 +340,6 @@ namespace SpaceSim.Simulation.Ships
 
             if (isLocal && localFrameBodyId.IsValid)
             {
-                // Compute distance in local frame.
                 SimVec3 framePos = _positionResolver(localFrameBodyId, simTime);
                 SimVec3 shipLocal = shipPos - framePos;
                 SimVec3 destPos = _positionResolver(destinationId, simTime);
@@ -170,7 +348,6 @@ namespace SpaceSim.Simulation.Ships
             }
             else
             {
-                // Global distance.
                 SimVec3 destPos = _positionResolver(destinationId, simTime);
                 distance = SimVec3.Distance(shipPos, destPos);
             }
@@ -251,7 +428,6 @@ namespace SpaceSim.Simulation.Ships
             _destinationCandidates.Clear();
             foreach (var body in _registry.AllCelestialBodies)
             {
-                // Planets, moons, and stations are valid destinations.
                 if (body.BodyType == CelestialBodyType.Planet ||
                     body.BodyType == CelestialBodyType.Moon ||
                     body.BodyType == CelestialBodyType.Station)
@@ -265,7 +441,9 @@ namespace SpaceSim.Simulation.Ships
         public string GetStatus()
         {
             return $"NPCShipScheduler: {_destinationCandidates.Count} destinations, " +
-                   $"{_arrivalTimes.Count} ships waiting, speed={TravelSpeed:F1} Mm/s";
+                   $"{_arrivalTimes.Count} ships waiting, " +
+                   $"{_pendingDeparture.Count} pending departure, " +
+                   $"{_pendingSurfaceDock.Count} pending surface dock, speed={TravelSpeed:F1} Mm/s";
         }
     }
 }

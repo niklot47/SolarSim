@@ -16,6 +16,7 @@ namespace SpaceSim.UI.Panels
     /// Displays additional ship-specific fields when a ship is selected.
     /// Displays station-specific fields when a station is selected.
     /// Shows SOI info for bodies and dominant body for ships.
+    /// Shows docking info for ships and stations.
     /// </summary>
     public class ObjectDetailsPanelController : MonoBehaviour
     {
@@ -43,11 +44,23 @@ namespace SpaceSim.UI.Panels
         private VisualElement _shipSOIRow;
         private Label _soiBodyValue;
 
+        // Ship docking UI elements.
+        private VisualElement _shipDockedAtRow;
+        private Label _dockedAtValue;
+        private VisualElement _shipDockedPortRow;
+        private Label _dockedPortValue;
+
         // Station-specific UI elements.
         private VisualElement _stationKindRow;
         private Label _stationKindValue;
         private VisualElement _attachmentRow;
         private Label _attachmentValue;
+
+        // Station docking UI elements.
+        private VisualElement _stationPortsRow;
+        private Label _stationPortsValue;
+        private VisualElement _stationOccupiedRow;
+        private Label _stationOccupiedValue;
 
         // SOI radius row (for non-ship bodies with SOI).
         private VisualElement _soiRadiusRow;
@@ -110,6 +123,15 @@ namespace SpaceSim.UI.Panels
             SetLabel(_root, "details-dest-label", UIStrings.Get("panel.details.destination"));
             SetLabel(_root, "details-soi-label", UIStrings.Get("panel.details.soi_body"));
 
+            // Ship docking rows.
+            _shipDockedAtRow = _root.Q<VisualElement>("details-docked-at-row");
+            _dockedAtValue = _root.Q<Label>("details-docked-at-value");
+            _shipDockedPortRow = _root.Q<VisualElement>("details-docked-port-row");
+            _dockedPortValue = _root.Q<Label>("details-docked-port-value");
+
+            SetLabel(_root, "details-docked-at-label", UIStrings.Get("panel.details.docked_at"));
+            SetLabel(_root, "details-docked-port-label", UIStrings.Get("panel.details.docking_port"));
+
             // Station rows.
             _stationKindRow = _root.Q<VisualElement>("details-stationkind-row");
             _stationKindValue = _root.Q<Label>("details-stationkind-value");
@@ -118,6 +140,15 @@ namespace SpaceSim.UI.Panels
 
             SetLabel(_root, "details-stationkind-label", UIStrings.Get("panel.details.station_kind"));
             SetLabel(_root, "details-attachment-label", UIStrings.Get("panel.details.attachment"));
+
+            // Station docking rows.
+            _stationPortsRow = _root.Q<VisualElement>("details-station-ports-row");
+            _stationPortsValue = _root.Q<Label>("details-station-ports-value");
+            _stationOccupiedRow = _root.Q<VisualElement>("details-station-occupied-row");
+            _stationOccupiedValue = _root.Q<Label>("details-station-occupied-value");
+
+            SetLabel(_root, "details-station-ports-label", UIStrings.Get("panel.details.docking_ports"));
+            SetLabel(_root, "details-station-occupied-label", UIStrings.Get("panel.details.ports_occupied"));
 
             // SOI radius row (for bodies).
             _soiRadiusRow = _root.Q<VisualElement>("details-soiradius-row");
@@ -133,9 +164,11 @@ namespace SpaceSim.UI.Panels
             var body = _registry?.GetCelestialBody(_currentSelectionId);
             if (body == null) return;
 
-            // Live update ship dynamic fields.
+            // Live update dynamic fields.
             if (body.ShipInfo != null)
                 UpdateShipDynamicFields(body);
+            if (body.StationInfo != null)
+                UpdateStationDynamicFields(body);
         }
 
         private void OnSelectionChanged(EntityId previousId, EntityId newId)
@@ -195,6 +228,8 @@ namespace SpaceSim.UI.Panels
             SetRowVisible(_shipStateRow, isShip);
             SetRowVisible(_shipDestRow, isShip);
             SetRowVisible(_shipSOIRow, isShip);
+            SetRowVisible(_shipDockedAtRow, false);
+            SetRowVisible(_shipDockedPortRow, false);
 
             if (isShip)
             {
@@ -213,6 +248,8 @@ namespace SpaceSim.UI.Panels
 
             SetRowVisible(_stationKindRow, isStation);
             SetRowVisible(_attachmentRow, isStation);
+            SetRowVisible(_stationPortsRow, false);
+            SetRowVisible(_stationOccupiedRow, false);
 
             if (isStation)
             {
@@ -220,6 +257,8 @@ namespace SpaceSim.UI.Panels
                     _stationKindValue.text = UIStrings.GetStationKindName(body.StationInfo.Kind.ToString());
                 if (_attachmentValue != null)
                     _attachmentValue.text = UIStrings.GetAttachmentModeName(body.AttachmentMode.ToString());
+
+                UpdateStationDynamicFields(body);
             }
 
             // SOI radius for non-ship bodies.
@@ -248,6 +287,24 @@ namespace SpaceSim.UI.Panels
                 _destValue.text = dest != null ? dest.DisplayName : info.CurrentRoute.DestinationBodyId.ToString();
             }
 
+            // Docking info for ships.
+            bool isDocked = info.State == ShipState.Docked && info.DockedAtStationId.IsValid;
+            bool isApproaching = info.State == ShipState.ApproachingStation && info.DockedAtStationId.IsValid;
+
+            SetRowVisible(_shipDockedAtRow, isDocked || isApproaching);
+            SetRowVisible(_shipDockedPortRow, isDocked);
+
+            if ((isDocked || isApproaching) && _dockedAtValue != null)
+            {
+                var station = _registry?.GetCelestialBody(info.DockedAtStationId);
+                _dockedAtValue.text = station != null ? station.DisplayName : info.DockedAtStationId.ToString();
+            }
+
+            if (isDocked && _dockedPortValue != null)
+            {
+                _dockedPortValue.text = $"#{info.DockedPortId}";
+            }
+
             // Update dominant SOI body display.
             if (_soiBodyValue != null)
             {
@@ -260,6 +317,24 @@ namespace SpaceSim.UI.Panels
                 {
                     _soiBodyValue.text = UIStrings.Get("panel.details.none");
                 }
+            }
+        }
+
+        private void UpdateStationDynamicFields(CelestialBody body)
+        {
+            if (body.StationInfo == null) return;
+
+            bool hasDocking = body.StationInfo.HasDocking;
+            SetRowVisible(_stationPortsRow, hasDocking);
+            SetRowVisible(_stationOccupiedRow, hasDocking);
+
+            if (hasDocking)
+            {
+                var docking = body.StationInfo.Docking;
+                if (_stationPortsValue != null)
+                    _stationPortsValue.text = docking.TotalPorts.ToString();
+                if (_stationOccupiedValue != null)
+                    _stationOccupiedValue.text = $"{docking.OccupiedCount} / {docking.TotalPorts}";
             }
         }
 

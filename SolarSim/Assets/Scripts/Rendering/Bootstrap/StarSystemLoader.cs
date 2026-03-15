@@ -102,7 +102,8 @@ namespace SpaceSim.Rendering.Bootstrap
                         StartAngleDeg = stDef.StartAngleDeg,
                         RotationPeriod = stDef.RotationPeriod,
                         SurfaceLatitudeDeg = stDef.SurfaceLatitudeDeg,
-                        SurfaceLongitudeDeg = stDef.SurfaceLongitudeDeg
+                        SurfaceLongitudeDeg = stDef.SurfaceLongitudeDeg,
+                        DockingPortCount = stDef.DockingPortCount
                     });
                 }
             }

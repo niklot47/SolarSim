@@ -12,16 +12,17 @@ namespace SpaceSim.Simulation.Core
     public static class SampleStarSystemFactory
     {
         /// <summary>
-        /// Create a minimal test system: 1 star, 3 planets, 1 moon, 3 ships, 2 stations.
+        /// Create a minimal test system: 1 star, 3 planets, 1 moon, 3 ships, 4 stations.
         /// Body radii are scaled down and orbit radii scaled up for visual clarity.
         /// SOI values are approximate placeholders for testing SOI resolver.
+        /// Orbital and surface stations have docking ports.
         /// </summary>
         public static StarSystem Create(WorldRegistry registry)
         {
             var system = new StarSystem("\u0422\u0435\u0441\u0442\u043e\u0432\u0430\u044f \u0441\u0438\u0441\u0442\u0435\u043c\u0430");
             system.LocalizationKeyName = "system.test";
 
-            // Star: SOI covers entire system (fallback domain).
+            // Star.
             var star = new CelestialBody("\u0421\u043e\u043b\u043d\u0446\u0435", CelestialBodyType.Star)
             {
                 Radius = 1.0,
@@ -29,10 +30,10 @@ namespace SpaceSim.Simulation.Core
                 IsSelectable = true,
                 LocalizationKeyName = "body.sol",
                 Spin = SpinDefinition.Simple(600.0),
-                SOIRadius = 1000.0 // Covers entire sample system.
+                SOIRadius = 1000.0
             };
 
-            // Terra: SOI = ~60 Mm (orbit at 150, so SOI reaches well past Luna at 25).
+            // Terra.
             var planet1 = new CelestialBody("\u0422\u0435\u0440\u0440\u0430", CelestialBodyType.Planet)
             {
                 Radius = 0.3,
@@ -46,7 +47,7 @@ namespace SpaceSim.Simulation.Core
                 SOIRadius = 60.0
             };
 
-            // Ares: SOI = ~40 Mm.
+            // Ares.
             var planet2 = new CelestialBody("\u0410\u0440\u0435\u0441", CelestialBodyType.Planet)
             {
                 Radius = 0.2,
@@ -60,7 +61,7 @@ namespace SpaceSim.Simulation.Core
                 SOIRadius = 40.0
             };
 
-            // Venus: SOI = ~30 Mm.
+            // Venus.
             var venus = new CelestialBody("\u0412\u0435\u043d\u0435\u0440\u0430", CelestialBodyType.Planet)
             {
                 Radius = 0.16,
@@ -74,7 +75,7 @@ namespace SpaceSim.Simulation.Core
                 SOIRadius = 30.0
             };
 
-            // Luna: SOI = ~8 Mm (orbits Terra at 25 Mm).
+            // Luna.
             var moon = new CelestialBody("\u041b\u0443\u043d\u0430", CelestialBodyType.Moon)
             {
                 Radius = 0.08,
@@ -110,12 +111,9 @@ namespace SpaceSim.Simulation.Core
 
             var playerShip = new CelestialBody("\u041a\u043e\u0440\u0432\u0435\u0442 \u00ab\u0410\u0432\u0440\u043e\u0440\u0430\u00bb", CelestialBodyType.Ship)
             {
-                Radius = 0.03,
-                HasSurface = false,
-                IsSelectable = true,
+                Radius = 0.03, HasSurface = false, IsSelectable = true,
                 LocalizationKeyName = "ship.aurora",
-                ParentId = planet1.Id,
-                AttachmentMode = AttachmentMode.Orbit,
+                ParentId = planet1.Id, AttachmentMode = AttachmentMode.Orbit,
                 Orbit = OrbitDefinition.Circular(radius: 3.0, period: 12.0, startAngleDeg: 0.0),
                 Spin = new SpinDefinition(),
                 ShipInfo = new ShipInfo(ShipRole.Player, "ship_aurora", "Corvette")
@@ -123,12 +121,9 @@ namespace SpaceSim.Simulation.Core
 
             var traderShip = new CelestialBody("\u0422\u0440\u0430\u043d\u0441\u043f\u043e\u0440\u0442 \u00ab\u041a\u0430\u0440\u0433\u043e-7\u00bb", CelestialBodyType.Ship)
             {
-                Radius = 0.024,
-                HasSurface = false,
-                IsSelectable = true,
+                Radius = 0.024, HasSurface = false, IsSelectable = true,
                 LocalizationKeyName = "ship.cargo7",
-                ParentId = planet1.Id,
-                AttachmentMode = AttachmentMode.Orbit,
+                ParentId = planet1.Id, AttachmentMode = AttachmentMode.Orbit,
                 Orbit = OrbitDefinition.Circular(radius: 4.0, period: 15.0, startAngleDeg: 120.0),
                 Spin = new SpinDefinition(),
                 ShipInfo = new ShipInfo(ShipRole.Trader, "ship_cargo7", "Freighter")
@@ -136,12 +131,9 @@ namespace SpaceSim.Simulation.Core
 
             var patrolShip = new CelestialBody("\u041f\u0430\u0442\u0440\u0443\u043b\u044c \u00ab\u0421\u0442\u0440\u0430\u0436-3\u00bb", CelestialBodyType.Ship)
             {
-                Radius = 0.024,
-                HasSurface = false,
-                IsSelectable = true,
+                Radius = 0.024, HasSurface = false, IsSelectable = true,
                 LocalizationKeyName = "ship.strazh3",
-                ParentId = planet2.Id,
-                AttachmentMode = AttachmentMode.Orbit,
+                ParentId = planet2.Id, AttachmentMode = AttachmentMode.Orbit,
                 Orbit = OrbitDefinition.Circular(radius: 3.0, period: 10.0, startAngleDeg: 200.0),
                 Spin = new SpinDefinition(),
                 ShipInfo = new ShipInfo(ShipRole.Patrol, "ship_strazh3", "Interceptor")
@@ -159,42 +151,77 @@ namespace SpaceSim.Simulation.Core
             system.AddBody(traderShip.Id);
             system.AddBody(patrolShip.Id);
 
-            // --- Stations ---
+            // --- Stations: Terra ---
 
-            var orbitalStation = new CelestialBody("\u0421\u0442\u0430\u043d\u0446\u0438\u044f \u00ab\u041e\u0440\u0431\u0438\u0442\u0430-1\u00bb", CelestialBodyType.Station)
+            var orbitalStationInfo1 = new StationInfo(StationKind.Orbital);
+            orbitalStationInfo1.InitializeDocking(3);
+
+            var orbitalStation1 = new CelestialBody("\u0421\u0442\u0430\u043d\u0446\u0438\u044f \u00ab\u041e\u0440\u0431\u0438\u0442\u0430-1\u00bb", CelestialBodyType.Station)
             {
-                Radius = 0.06,
-                HasSurface = false,
-                IsSelectable = true,
+                Radius = 0.06, HasSurface = false, IsSelectable = true,
                 LocalizationKeyName = "station.orbita1",
-                ParentId = planet1.Id,
-                AttachmentMode = AttachmentMode.Orbit,
+                ParentId = planet1.Id, AttachmentMode = AttachmentMode.Orbit,
                 Orbit = OrbitDefinition.Circular(radius: 8.0, period: 18.0, startAngleDeg: 60.0),
                 Spin = SpinDefinition.Simple(40.0),
-                StationInfo = new StationInfo(StationKind.Orbital)
+                StationInfo = orbitalStationInfo1
             };
 
-            var surfaceStation = new CelestialBody("\u0411\u0430\u0437\u0430 \u00ab\u0422\u0435\u0440\u0440\u0430-1\u00bb", CelestialBodyType.Station)
+            var surfaceStationInfo1 = new StationInfo(StationKind.Surface, latDeg: 30.0, lonDeg: 45.0);
+            surfaceStationInfo1.InitializeDocking(2);
+
+            var surfaceStation1 = new CelestialBody("\u0411\u0430\u0437\u0430 \u00ab\u0422\u0435\u0440\u0440\u0430-1\u00bb", CelestialBodyType.Station)
             {
-                Radius = 0.04,
-                HasSurface = false,
-                IsSelectable = true,
+                Radius = 0.04, HasSurface = false, IsSelectable = true,
                 LocalizationKeyName = "station.terra1",
-                ParentId = planet1.Id,
-                AttachmentMode = AttachmentMode.Surface,
-                Orbit = null,
-                Spin = new SpinDefinition(),
-                StationInfo = new StationInfo(StationKind.Surface, latDeg: 30.0, lonDeg: 45.0)
+                ParentId = planet1.Id, AttachmentMode = AttachmentMode.Surface,
+                Orbit = null, Spin = new SpinDefinition(),
+                StationInfo = surfaceStationInfo1
             };
 
-            planet1.AddChildId(orbitalStation.Id);
-            planet1.AddChildId(surfaceStation.Id);
+            planet1.AddChildId(orbitalStation1.Id);
+            planet1.AddChildId(surfaceStation1.Id);
 
-            registry.Add(orbitalStation);
-            registry.Add(surfaceStation);
+            registry.Add(orbitalStation1);
+            registry.Add(surfaceStation1);
 
-            system.AddBody(orbitalStation.Id);
-            system.AddBody(surfaceStation.Id);
+            system.AddBody(orbitalStation1.Id);
+            system.AddBody(surfaceStation1.Id);
+
+            // --- Stations: Ares ---
+
+            var orbitalStationInfoAres = new StationInfo(StationKind.Orbital);
+            orbitalStationInfoAres.InitializeDocking(2);
+
+            var orbitalStationAres = new CelestialBody("\u0421\u0442\u0430\u043d\u0446\u0438\u044f \u00ab\u0424\u043e\u0431\u043e\u0441\u00bb", CelestialBodyType.Station)
+            {
+                Radius = 0.05, HasSurface = false, IsSelectable = true,
+                LocalizationKeyName = "station.phobos",
+                ParentId = planet2.Id, AttachmentMode = AttachmentMode.Orbit,
+                Orbit = OrbitDefinition.Circular(radius: 6.0, period: 14.0, startAngleDeg: 30.0),
+                Spin = SpinDefinition.Simple(30.0),
+                StationInfo = orbitalStationInfoAres
+            };
+
+            var surfaceStationInfoAres = new StationInfo(StationKind.Surface, latDeg: -15.0, lonDeg: 120.0);
+            surfaceStationInfoAres.InitializeDocking(2);
+
+            var surfaceStationAres = new CelestialBody("\u0411\u0430\u0437\u0430 \u00ab\u0410\u0440\u0435\u0441-1\u00bb", CelestialBodyType.Station)
+            {
+                Radius = 0.035, HasSurface = false, IsSelectable = true,
+                LocalizationKeyName = "station.ares1",
+                ParentId = planet2.Id, AttachmentMode = AttachmentMode.Surface,
+                Orbit = null, Spin = new SpinDefinition(),
+                StationInfo = surfaceStationInfoAres
+            };
+
+            planet2.AddChildId(orbitalStationAres.Id);
+            planet2.AddChildId(surfaceStationAres.Id);
+
+            registry.Add(orbitalStationAres);
+            registry.Add(surfaceStationAres);
+
+            system.AddBody(orbitalStationAres.Id);
+            system.AddBody(surfaceStationAres.Id);
 
             return system;
         }

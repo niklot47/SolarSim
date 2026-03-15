@@ -170,6 +170,7 @@ MonoBehaviour:
     RotationPeriod: 40
     SurfaceLatitudeDeg: 0
     SurfaceLongitudeDeg: 0
+    DockingPortCount: 3
   - Key: station_terra1
     DisplayName: "\u0411\u0430\u0437\u0430 \xAB\u0422\u0435\u0440\u0440\u0430-1\xBB"
     LocalizationKey: station.terra1
@@ -182,3 +183,30 @@ MonoBehaviour:
     RotationPeriod: 0
     SurfaceLatitudeDeg: 30
     SurfaceLongitudeDeg: 45
+    DockingPortCount: 2
+  - Key: station_phobos
+    DisplayName: "\u0421\u0442\u0430\u043D\u0446\u0438\u044F \xAB\u0424\u043E\u0431\u043E\u0441\xBB"
+    LocalizationKey: station.phobos
+    Kind: 0
+    ParentBodyKey: ares
+    Radius: 0.05
+    OrbitalRadius: 6
+    OrbitalPeriod: 14
+    StartAngleDeg: 30
+    RotationPeriod: 30
+    SurfaceLatitudeDeg: 0
+    SurfaceLongitudeDeg: 0
+    DockingPortCount: 2
+  - Key: station_ares1
+    DisplayName: "\u0411\u0430\u0437\u0430 \xAB\u0410\u0440\u0435\u0441-1\xBB"
+    LocalizationKey: station.ares1
+    Kind: 1
+    ParentBodyKey: ares
+    Radius: 0.035
+    OrbitalRadius: 2
+    OrbitalPeriod: 15
+    StartAngleDeg: 0
+    RotationPeriod: 0
+    SurfaceLatitudeDeg: -15
+    SurfaceLongitudeDeg: 120
+    DockingPortCount: 2

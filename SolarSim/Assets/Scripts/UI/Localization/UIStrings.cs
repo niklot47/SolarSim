@@ -32,6 +32,12 @@ namespace SpaceSim.UI.Localization
             ["panel.details.attachment"] = "\u041a\u0440\u0435\u043f\u043b\u0435\u043d\u0438\u0435",
             ["panel.details.soi_radius"] = "\u0420\u0430\u0434\u0438\u0443\u0441 SOI",
 
+            // Docking details.
+            ["panel.details.docked_at"] = "\u041f\u0440\u0438\u0441\u0442\u044b\u043a\u043e\u0432\u0430\u043d",
+            ["panel.details.docking_port"] = "\u041f\u043e\u0440\u0442",
+            ["panel.details.docking_ports"] = "\u0421\u0442\u044b\u043a\u043e\u0432\u043e\u0447\u043d\u044b\u0435 \u043f\u043e\u0440\u0442\u044b",
+            ["panel.details.ports_occupied"] = "\u0417\u0430\u043d\u044f\u0442\u043e",
+
             // Body type names.
             ["bodytype.Star"] = "\u0417\u0432\u0435\u0437\u0434\u0430",
             ["bodytype.Planet"] = "\u041f\u043b\u0430\u043d\u0435\u0442\u0430",
@@ -62,6 +68,9 @@ namespace SpaceSim.UI.Localization
             ["shipstate.Orbiting"] = "\u041d\u0430 \u043e\u0440\u0431\u0438\u0442\u0435",
             ["shipstate.Travelling"] = "\u0412 \u043f\u043e\u043b\u0451\u0442\u0435",
             ["shipstate.Arrived"] = "\u041f\u0440\u0438\u0431\u044b\u043b",
+            ["shipstate.ApproachingStation"] = "\u0421\u0431\u043b\u0438\u0436\u0435\u043d\u0438\u0435",
+            ["shipstate.Docking"] = "\u0421\u0442\u044b\u043a\u043e\u0432\u043a\u0430",
+            ["shipstate.Docked"] = "\u041f\u0440\u0438\u0441\u0442\u044b\u043a\u043e\u0432\u0430\u043d",
 
             // Time controls.
             ["time.pause"] = "\u041f\u0430\u0443\u0437\u0430",

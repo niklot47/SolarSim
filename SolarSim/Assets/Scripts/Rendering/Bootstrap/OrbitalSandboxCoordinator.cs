@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using SpaceSim.Data.Definitions;
 using SpaceSim.Simulation.Core;
+using SpaceSim.Simulation.Docking;
 using SpaceSim.Simulation.Ships;
 using SpaceSim.Simulation.SOI;
 using SpaceSim.Simulation.Time;
@@ -43,6 +44,15 @@ namespace SpaceSim.Rendering.Bootstrap
         [Min(0.0f)]
         [SerializeField] private float npcIdleDelay = 3.0f;
 
+        [Header("Docking")]
+        [Tooltip("How long NPC ships stay docked at stations (sim-seconds).")]
+        [Min(1.0f)]
+        [SerializeField] private float npcDockingWaitTime = 5.0f;
+
+        [Tooltip("Duration of the docking approach phase (sim-seconds).")]
+        [Min(0.5f)]
+        [SerializeField] private float dockingApproachDuration = 2.0f;
+
         private WorldRegistry _registry;
         private StarSystem _currentSystem;
         private SelectionService _selectionService;
@@ -50,6 +60,7 @@ namespace SpaceSim.Rendering.Bootstrap
         private NPCShipScheduler _npcScheduler;
         private WorldPositionResolver _positionResolver;
         private SOIResolver _soiResolver;
+        private DockingSystem _dockingSystem;
         private SimulationClock _clock;
         private ObjectListPanelController _listPanel;
 
@@ -73,10 +84,17 @@ namespace SpaceSim.Rendering.Bootstrap
             _shipMovement = new ShipMovementSystem(_registry);
             _shipMovement.OnShipArrived += OnShipArrived;
 
+            _dockingSystem = new DockingSystem(_registry);
+            _dockingSystem.ApproachDuration = dockingApproachDuration;
+            _dockingSystem.OnShipDocked += OnShipDocked;
+            _dockingSystem.OnShipUndocked += OnShipUndocked;
+
             _npcScheduler = new NPCShipScheduler(
                 _registry, _shipMovement, () => _clock.CurrentTime,
                 npcTravelSpeed, npcMinTravelDuration, npcIdleDelay);
             _npcScheduler.OnRouteScheduled += OnNpcRouteScheduled;
+            _npcScheduler.DockingWaitTime = npcDockingWaitTime;
+            _npcScheduler.SetDockingSystem(_dockingSystem);
 
             if (mapRenderer != null)
             {
@@ -104,23 +122,34 @@ namespace SpaceSim.Rendering.Bootstrap
             UnityEngine.Debug.Log(
                 $"[OrbitalSandboxCoordinator] Setup complete. System: {_currentSystem}. " +
                 $"{_soiResolver.GetStatus()}. " +
-                $"NPC: speed={npcTravelSpeed:F1} minDur={npcMinTravelDuration:F1} idle={npcIdleDelay:F1}");
+                $"NPC: speed={npcTravelSpeed:F1} minDur={npcMinTravelDuration:F1} idle={npcIdleDelay:F1} " +
+                $"dockWait={npcDockingWaitTime:F1} approach={dockingApproachDuration:F1}");
         }
 
         private void Update()
         {
             if (_clock == null || _shipMovement == null || _positionResolver == null) return;
 
+            // Sync Inspector parameters to runtime services.
             if (_npcScheduler != null)
             {
                 _npcScheduler.TravelSpeed = npcTravelSpeed;
                 _npcScheduler.MinTravelDuration = npcMinTravelDuration;
                 _npcScheduler.IdleDelay = npcIdleDelay;
+                _npcScheduler.DockingWaitTime = npcDockingWaitTime;
+            }
+            if (_dockingSystem != null)
+            {
+                _dockingSystem.ApproachDuration = dockingApproachDuration;
             }
 
             double simTime = _clock.CurrentTime;
 
             _shipMovement.Update(simTime, (bodyId, time) => _positionResolver.Resolve(bodyId, time));
+
+            // Update docking approach interpolation.
+            _dockingSystem?.Update(simTime, (bodyId, time) => _positionResolver.Resolve(bodyId, time));
+
             _npcScheduler?.Update();
 
             // Update SOI tracking for all ships after movement.
@@ -141,6 +170,11 @@ namespace SpaceSim.Rendering.Bootstrap
         {
             if (_shipMovement != null) _shipMovement.OnShipArrived -= OnShipArrived;
             if (_npcScheduler != null) _npcScheduler.OnRouteScheduled -= OnNpcRouteScheduled;
+            if (_dockingSystem != null)
+            {
+                _dockingSystem.OnShipDocked -= OnShipDocked;
+                _dockingSystem.OnShipUndocked -= OnShipUndocked;
+            }
         }
 
 #if UNITY_EDITOR
@@ -166,6 +200,26 @@ namespace SpaceSim.Rendering.Bootstrap
             UnityEngine.Debug.Log(
                 $"[OrbitalSandboxCoordinator] Ship arrived: " +
                 $"{ship?.DisplayName ?? shipId.ToString()} at {dest?.DisplayName ?? destinationId.ToString()}");
+        }
+
+        private void OnShipDocked(EntityId shipId, EntityId stationId)
+        {
+            RefreshObjectList();
+            var ship = _registry.GetCelestialBody(shipId);
+            var station = _registry.GetCelestialBody(stationId);
+            UnityEngine.Debug.Log(
+                $"[Docking] {ship?.DisplayName ?? shipId.ToString()} docked at " +
+                $"{station?.DisplayName ?? stationId.ToString()}");
+        }
+
+        private void OnShipUndocked(EntityId shipId, EntityId stationId)
+        {
+            RefreshObjectList();
+            var ship = _registry.GetCelestialBody(shipId);
+            var station = _registry.GetCelestialBody(stationId);
+            UnityEngine.Debug.Log(
+                $"[Docking] {ship?.DisplayName ?? shipId.ToString()} undocked from " +
+                $"{station?.DisplayName ?? stationId.ToString()}");
         }
 
         private void LogSOITransition(SOITransition t)
@@ -254,5 +308,6 @@ namespace SpaceSim.Rendering.Bootstrap
         public ShipMovementSystem ShipMovement => _shipMovement;
         public WorldPositionResolver PositionResolver => _positionResolver;
         public SOIResolver SOI => _soiResolver;
+        public DockingSystem Docking => _dockingSystem;
     }
 }

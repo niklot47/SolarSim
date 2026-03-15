@@ -126,6 +126,26 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
 
+                <!-- Ship: Docked At (station name) -->
+                <ui:VisualElement name="details-docked-at-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-docked-at-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-docked-at-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Ship: Docking Port -->
+                <ui:VisualElement name="details-docked-port-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-docked-port-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-docked-port-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
                 <!-- Station: Kind -->
                 <ui:VisualElement name="details-stationkind-row" class="details-row">
                     <ui:VisualElement class="details-cell-label">
@@ -143,6 +163,26 @@
                     </ui:VisualElement>
                     <ui:VisualElement class="details-cell-value">
                         <ui:Label name="details-attachment-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Station: Docking Ports count -->
+                <ui:VisualElement name="details-station-ports-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-station-ports-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-station-ports-value" class="details-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Station: Ports Occupied -->
+                <ui:VisualElement name="details-station-occupied-row" class="details-row">
+                    <ui:VisualElement class="details-cell-label">
+                        <ui:Label name="details-station-occupied-label" class="details-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="details-cell-value">
+                        <ui:Label name="details-station-occupied-value" class="details-value" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>

@@ -155,6 +155,8 @@ MonoBehaviour:
   npcTravelSpeed: 10
   npcMinTravelDuration: 3
   npcIdleDelay: 3
+  npcDockingWaitTime: 5
+  dockingApproachDuration: 2
 --- !u!4 &81263134
 Transform:
   m_ObjectHideFlags: 0

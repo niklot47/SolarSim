@@ -33,11 +33,19 @@ namespace SpaceSim.World.Entities
         /// </summary>
         public double SurfaceLongitudeDeg { get; set; }
 
+        /// <summary>
+        /// Docking capability data. Non-null if this station supports docking.
+        /// Contains the list of docking ports and their occupancy state.
+        /// Only orbital stations support docking in the current implementation.
+        /// </summary>
+        public DockingInfo Docking { get; set; }
+
         public StationInfo()
         {
             Kind = StationKind.Orbital;
             SurfaceLatitudeDeg = 0.0;
             SurfaceLongitudeDeg = 0.0;
+            Docking = null;
         }
 
         public StationInfo(StationKind kind, double latDeg = 0.0, double lonDeg = 0.0)
@@ -45,13 +53,35 @@ namespace SpaceSim.World.Entities
             Kind = kind;
             SurfaceLatitudeDeg = latDeg;
             SurfaceLongitudeDeg = lonDeg;
+            Docking = null;
         }
+
+        /// <summary>
+        /// Initialize docking capability with a given number of ports.
+        /// Only makes sense for orbital stations.
+        /// </summary>
+        /// <param name="portCount">Number of docking ports.</param>
+        /// <param name="portDistance">Distance of ports from station center in Mm.</param>
+        public void InitializeDocking(int portCount, double portDistance = 0.15)
+        {
+            if (portCount <= 0)
+            {
+                Docking = null;
+                return;
+            }
+            Docking = new DockingInfo();
+            Docking.GeneratePorts(portCount, portDistance);
+        }
+
+        /// <summary>Whether this station has docking capability.</summary>
+        public bool HasDocking => Docking != null && Docking.TotalPorts > 0;
 
         public override string ToString()
         {
+            string dockStr = HasDocking ? $" {Docking}" : "";
             if (Kind == StationKind.Surface)
-                return $"StationInfo[{Kind} lat={SurfaceLatitudeDeg:F1} lon={SurfaceLongitudeDeg:F1}]";
-            return $"StationInfo[{Kind}]";
+                return $"StationInfo[{Kind} lat={SurfaceLatitudeDeg:F1} lon={SurfaceLongitudeDeg:F1}{dockStr}]";
+            return $"StationInfo[{Kind}{dockStr}]";
         }
     }
 }

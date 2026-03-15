@@ -17,7 +17,7 @@ namespace SpaceSim.Simulation.Ships
         private const double DefaultOrbitRadius = 3.0;
         private const double DefaultOrbitPeriod = 12.0;
 
-        // Small orbit around stations for arriving ships.
+        // Small orbit around orbital stations for arriving ships.
         private const double StationOrbitRadius = 0.5;
         private const double StationOrbitPeriod = 8.0;
 
@@ -56,41 +56,72 @@ namespace SpaceSim.Simulation.Ships
             var destination = _registry.GetCelestialBody(destinationId);
             if (origin == null || destination == null) return false;
 
-            // Determine orbit radius/period at destination.
-            // If destination is a station, use small station orbit.
+            // Determine the actual arrival body and orbit parameters.
+            // For surface stations: arrive at parent body orbit, not at the station.
+            EntityId arrivalBodyId;
             double destOrbitRadius;
             double destOrbitPeriod;
 
-            if (destination.BodyType == CelestialBodyType.Station)
+            if (destination.BodyType == CelestialBodyType.Station &&
+                destination.StationInfo != null &&
+                destination.StationInfo.Kind == StationKind.Surface)
             {
-                destOrbitRadius = StationOrbitRadius;
-                destOrbitPeriod = StationOrbitPeriod;
-            }
-            else if (ship.Orbit != null)
-            {
-                destOrbitRadius = ship.Orbit.SemiMajorAxis;
-                destOrbitPeriod = ship.Orbit.OrbitalPeriod;
-            }
-            else
-            {
+                // Surface station: arrive at the station's parent body (planet).
+                if (!destination.ParentId.IsValid) return false;
+                var parentPlanet = _registry.GetCelestialBody(destination.ParentId);
+                if (parentPlanet == null) return false;
+
+                arrivalBodyId = destination.ParentId;
+                // Use a standard orbit around the planet.
                 destOrbitRadius = DefaultOrbitRadius;
                 destOrbitPeriod = DefaultOrbitPeriod;
             }
+            else if (destination.BodyType == CelestialBodyType.Station)
+            {
+                // Orbital station: arrive at small orbit around station.
+                arrivalBodyId = destinationId;
+                destOrbitRadius = StationOrbitRadius;
+                destOrbitPeriod = StationOrbitPeriod;
+            }
+            else
+            {
+                // Planet/moon: use ship's current orbit size or defaults.
+                arrivalBodyId = destinationId;
+                if (ship.Orbit != null)
+                {
+                    destOrbitRadius = ship.Orbit.SemiMajorAxis;
+                    destOrbitPeriod = ship.Orbit.OrbitalPeriod;
+                }
+                else
+                {
+                    destOrbitRadius = DefaultOrbitRadius;
+                    destOrbitPeriod = DefaultOrbitPeriod;
+                }
+            }
+
+            // For route computation, use the actual arrival body position.
+            var arrivalBody = _registry.GetCelestialBody(arrivalBodyId);
+            if (arrivalBody == null) return false;
 
             EntityId localFrameBodyId;
-            RouteFrame frame = DetermineRouteFrame(origin, destination, out localFrameBodyId);
+            RouteFrame frame = DetermineRouteFrame(origin, arrivalBody, out localFrameBodyId);
 
             ShipRoute route;
             if (frame == RouteFrame.LocalParent && positionResolver != null)
             {
-                route = BuildLocalRoute(ship, origin, destination, localFrameBodyId,
+                route = BuildLocalRoute(ship, origin, arrivalBody, localFrameBodyId,
                     currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod, positionResolver);
             }
             else
             {
-                route = BuildGlobalRoute(ship, origin, destination,
+                route = BuildGlobalRoute(ship, origin, arrivalBody,
                     currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod, positionResolver);
             }
+
+            // Store the ORIGINAL destination id (may be surface station) for event reporting.
+            // The route's DestinationBodyId is set to arrivalBodyId inside build methods,
+            // but we override it to keep the original destination for NPCShipScheduler tracking.
+            route.DestinationBodyId = destinationId;
 
             ship.ShipInfo.CurrentRoute = route;
             ship.ShipInfo.State = ShipState.Travelling;
@@ -138,7 +169,6 @@ namespace SpaceSim.Simulation.Ships
             // Case 1: destination is parent of origin (e.g. Moon -> Planet).
             if (origin.ParentId == destination.Id)
             {
-                // Only use local frame if destination is NOT a star.
                 if (destination.BodyType != CelestialBodyType.Star)
                 {
                     localFrameBodyId = destination.Id;
@@ -157,7 +187,6 @@ namespace SpaceSim.Simulation.Ships
             }
 
             // Case 3: siblings sharing the same parent.
-            // Only use local frame if parent is NOT a star.
             if (origin.ParentId.IsValid && origin.ParentId == destination.ParentId)
             {
                 var parent = _registry.GetCelestialBody(origin.ParentId);
@@ -168,15 +197,12 @@ namespace SpaceSim.Simulation.Ships
                 }
             }
 
-            // Case 4: destination is a station — check if station's parent
-            // creates a local-frame relationship with the ship's origin.
+            // Case 4: destination is a station — check station's parent.
             if (destination.BodyType == CelestialBodyType.Station && destination.ParentId.IsValid)
             {
                 var stationParent = _registry.GetCelestialBody(destination.ParentId);
                 if (stationParent != null)
                 {
-                    // If ship's origin is the station's parent body (or vice versa),
-                    // use the station's parent as local frame.
                     if (origin.Id == destination.ParentId && origin.BodyType != CelestialBodyType.Star)
                     {
                         localFrameBodyId = origin.Id;
@@ -190,7 +216,7 @@ namespace SpaceSim.Simulation.Ships
                 }
             }
 
-            // Case 5: origin is a station — similar logic.
+            // Case 5: origin is a station.
             if (origin.BodyType == CelestialBodyType.Station && origin.ParentId.IsValid)
             {
                 var stationParent = _registry.GetCelestialBody(origin.ParentId);
@@ -345,9 +371,35 @@ namespace SpaceSim.Simulation.Ships
                 return;
             }
 
-            // Ship enters orbit around the destination (including stations — no docking).
-            ship.ParentId = destination.Id;
-            destination.AddChildId(ship.Id);
+            // Determine the actual body the ship will orbit after arrival.
+            // For surface stations: orbit the station's parent body (planet), not the station.
+            EntityId arrivalParentId;
+
+            if (destination.BodyType == CelestialBodyType.Station &&
+                destination.StationInfo != null &&
+                destination.StationInfo.Kind == StationKind.Surface &&
+                destination.ParentId.IsValid)
+            {
+                // Surface station: parent ship to the planet.
+                arrivalParentId = destination.ParentId;
+            }
+            else
+            {
+                // Orbital station, planet, moon: parent ship to the destination.
+                arrivalParentId = destination.Id;
+            }
+
+            var arrivalParent = _registry.GetCelestialBody(arrivalParentId);
+            if (arrivalParent == null)
+            {
+                ship.ShipInfo.State = ShipState.Idle;
+                ship.ShipInfo.CurrentRoute = null;
+                ship.ShipInfo.OverrideWorldPosition = null;
+                return;
+            }
+
+            ship.ParentId = arrivalParentId;
+            arrivalParent.AddChildId(ship.Id);
             ship.AttachmentMode = AttachmentMode.Orbit;
 
             double period = route.DestinationOrbitPeriod;
@@ -372,7 +424,8 @@ namespace SpaceSim.Simulation.Ships
             ship.ShipInfo.OverrideWorldPosition = null;
             ship.ShipInfo.State = ShipState.Orbiting;
 
-            OnShipArrived?.Invoke(ship.Id, destination.Id);
+            // Fire event with ORIGINAL destination id (surface station or otherwise).
+            OnShipArrived?.Invoke(ship.Id, route.DestinationBodyId);
         }
 
         // ---------------------------------------------------------------
