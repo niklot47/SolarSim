@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 14 — External Star System Import Foundation (JSON loader).
+Last updated after: Step 15 — Elliptical Orbit Foundation.
 
 ------------------------------------------------------------------------
 
@@ -27,9 +27,32 @@ Last updated after: Step 14 — External Star System Import Foundation (JSON loa
 - **CelestialBody** — domain entity with orbital/spin data, parent-child hierarchy, ShipInfo, StationInfo, SOIRadius
 - **StarSystem** — container for body ids
 - **WorldRegistry** — central entity lookup
-- **OrbitalPositionCalculator** — circular orbit positions in XZ plane (MVP) + surface position from lat/lon
-- **OrbitalMapRenderer** — scene visuals, orbit lines, delegates position resolution to WorldPositionResolver
+- **OrbitalPositionCalculator** — full Keplerian orbit position calculation (elliptical + inclined + circular), surface position from lat/lon
+- **KeplerSolver** — Newton-Raphson solver for Kepler's equation M = E - e*sin(E), 8 iterations max, O(0) allocations
+- **OrbitalMapRenderer** — scene visuals, elliptical orbit lines via CalculateOrbitPoint(), delegates position resolution to WorldPositionResolver
 - **CelestialBodyView** — visual binding with role-based ship colors, station kind colors, station scale ×⅓
+
+### Elliptical Orbit Foundation (NEW)
+- **KeplerSolver** — pure C# Newton-Raphson solver in Simulation layer
+  - Solves M = E - e*sin(E) for eccentric anomaly E
+  - Initial guess: E₀ = M + e*sin(M)
+  - 8 iterations max, convergence threshold 1e-10 radians
+  - Zero allocations, no LINQ
+  - Circular orbit shortcut: e < 1e-12 → E = M (no iteration)
+- **OrbitalPositionCalculator** — upgraded from circular-only to full Keplerian
+  - Fast path: circular flat orbits (e ≈ 0, i ≈ 0) — identical to previous implementation
+  - General path: elliptical and/or inclined orbits
+  - Step 1: Solve Kepler's equation for eccentric anomaly E
+  - Step 2: Compute orbital plane position: x = a(cosE - e), z = a√(1-e²)sinE
+  - Step 3: Rotate by ω (argument of periapsis), i (inclination), Ω (longitude of ascending node)
+  - New method: `CalculateOrbitPoint(orbit, meanAnomalyRad)` for orbit line rendering
+  - All existing callers unchanged (CalculatePosition, CalculateAbsolutePosition, GetMeanAnomalyRad, CalculateSurfacePosition)
+- **OrbitalMapRenderer** — orbit lines now use CalculateOrbitPoint() instead of hardcoded circles
+  - Correctly renders elliptical and inclined orbits
+  - SceneScaleConfig DistanceScale applied to all orbit line points
+  - No change to position update logic (still delegates to WorldPositionResolver)
+- **Backward compatibility**: all existing circular orbits (e=0, i=0) produce identical results
+- **No changes** to: OrbitDefinition, WorldPositionResolver, ShipMovementSystem, DockingSystem, NPCShipScheduler, StarSystemBuilder, any UI or Data layer files
 
 ### World Position Resolution
 - **WorldPositionResolver** — single source of truth for body world positions (Simulation layer, pure C#)
@@ -42,25 +65,11 @@ Last updated after: Step 14 — External Star System Import Foundation (JSON loa
 - **SampleSystemAssetCreator** — editor menu to create sample asset
 - **SampleStarSystemFactory** — hardcoded fallback
 
-### External Star System Import (NEW)
-- **StarSystemJsonDto** — pure DTO classes: StarSystemJson, BodyJson, OrbitJson, SpinJson, StationJson, ShipJson
-- **StarSystemJsonValidator** — validates JSON structure before conversion:
-  - Duplicate key detection across bodies, stations, ships
-  - Parent key existence validation
-  - Orbit parameter validity (positive period, non-negative semi-major axis)
-  - Body type, station kind, ship role enum validation
-  - Self-parenting detection
-  - Returns JsonValidationResult with errors and warnings
+### External Star System Import
+- **StarSystemJsonDto** — pure DTO classes
+- **StarSystemJsonValidator** — validates JSON structure before conversion
 - **JsonStarSystemImporter** — adapter: JSON → StarSystemBuildData → StarSystemBuilder
-  - LoadFromTextAsset(TextAsset, WorldRegistry) — for Inspector-assigned files
-  - LoadFromFile(string path, WorldRegistry) — for runtime file loading
-  - LoadFromJson(string json, WorldRegistry) — core method
-  - Returns ImportResult with Success, System, Validation, counts, message
-  - Full error handling at every step (parse, validate, convert, build)
-- **SampleExternalSystem.json** — example JSON file matching the sample Sol system
-- **OrbitalSandboxCoordinator** — updated with `externalSystemFile` Inspector field
-  - Fallback chain: External JSON → StarSystemDefinition → SampleStarSystemFactory
-  - Debug logging via GameDebug for all import paths
+- **OrbitalSandboxCoordinator** — fallback chain: External JSON → StarSystemDefinition → SampleStarSystemFactory
 
 ### Stations Foundation
 - Two station kinds: **Orbital** and **Surface**
@@ -68,7 +77,7 @@ Last updated after: Step 14 — External Star System Import Foundation (JSON loa
 - Sample stations: Орбита-1, Терра-1, Фобос, Арес-1
 
 ### Docking Foundation
-- **DockingPort**, **DockingInfo**, **DockingSystem** — unchanged from previous step
+- **DockingPort**, **DockingInfo**, **DockingSystem** — unchanged
 
 ### Economy + Cargo Foundation
 - **ResourceType**, **StationStorage**, **ShipCargo**, **CargoTransferService** — unchanged
@@ -83,16 +92,16 @@ Last updated after: Step 14 — External Star System Import Foundation (JSON loa
 - **NPCShipScheduler** — demand-driven trader routing — unchanged
 
 ### Selection and Interaction
-- Unchanged from previous step
+- Unchanged
 
 ### UI Panels
-- Unchanged from previous step
+- Unchanged
 
 ### Camera and Labels
-- Unchanged from previous step
+- Unchanged
 
 ### Ships, Ship Movement, NPC Scheduling, SOI, Bootstrap
-- Unchanged from previous step (except coordinator LoadStarSystem method)
+- Unchanged (except OrbitalMapRenderer orbit line rendering)
 
 ------------------------------------------------------------------------
 
@@ -117,13 +126,19 @@ Unchanged.
 Unchanged.
 
 ### JSON deserialization uses Unity JsonUtility
-JsonUtility requires [Serializable] and public fields. Nested objects (orbit, spin) must not be null in JSON. Future: consider Newtonsoft JSON for more flexible parsing (nullable fields, comments, etc.).
+Unchanged.
 
 ### JSON import lives in Data layer
-JsonStarSystemImporter uses UnityEngine.TextAsset and JsonUtility, so it belongs in SpaceSim.Data (which allows Unity references). The DTO classes and validator also live in Data layer for colocation.
+Unchanged.
 
 ### JSON schema is not versioned
-No schema version field yet. Future: add "schemaVersion" field for migration support.
+Unchanged.
+
+### Ship orbits remain circular
+ShipMovementSystem assigns circular orbits (e=0) on arrival. Ships do not use elliptical orbits yet. This is intentional — elliptical orbit foundation affects celestial bodies only. Ship orbit assignment can be extended later.
+
+### Orbit line segments fixed at 64
+Adequate for visual quality at typical zoom levels. For very high eccentricity orbits near periapsis, 64 segments may show slight angular artifacts. Increase if needed.
 
 ------------------------------------------------------------------------
 
@@ -146,64 +161,62 @@ No schema version field yet. Future: add "schemaVersion" field for migration sup
 | Ship modules | Equipment slots |
 | Save/Load | WorldRegistry serialization |
 | Procedural planets | PPG Lite integration |
-| Elliptical/inclined orbits | Kepler equation solver, 3D orbit planes |
+| Inclined orbit visualization | SOI wireframe, orbit plane indicators |
 
 ------------------------------------------------------------------------
 
 ## Architecture Health Notes
 
 ### Clean boundaries maintained
-- JSON DTO classes are pure [Serializable] C# — no logic, only data
-- StarSystemJsonValidator is pure C# — no Unity dependency (lives in Data for colocation)
-- JsonStarSystemImporter is in Data layer — uses UnityEngine.JsonUtility and TextAsset (appropriate)
-- No changes to Simulation or World layers
-- StarSystemBuilder, WorldRegistry, ShipMovementSystem, DockingSystem — NOT modified
-- Import pipeline feeds into existing StarSystemBuildData → StarSystemBuilder.Build() pipeline
-- Both ScriptableObject and JSON pipelines produce identical runtime entities
+- KeplerSolver is pure C# in Simulation layer — zero Unity dependency
+- OrbitalPositionCalculator remains pure C# in Simulation layer — no API changes
+- OrbitalMapRenderer only calls OrbitalPositionCalculator.CalculateOrbitPoint() for orbit lines
+- No changes to World layer, UI layer, Data layer, Debug layer
+- ShipMovementSystem, DockingSystem, NPCShipScheduler — NOT modified
+- WorldPositionResolver — NOT modified, calls OrbitalPositionCalculator.CalculatePosition() which now handles elliptical orbits transparently
+- All existing callers of OrbitalPositionCalculator work without modification
 
 ### Known technical debt
 - All previous technical debt items remain
-- JsonUtility does not support Dictionary — orbit/spin are separate nested objects
-- JsonUtility does not support null reference types — missing orbit/spin fields default to type defaults
-- JSON validation warnings are logged but do not prevent loading
-- No JSON schema version field for future migration
+- Ship orbits assigned by ShipMovementSystem/DockingSystem are always circular (e=0)
+- Orbit line segments (64) may be insufficient for very high eccentricity orbits
+- No orbit line rendering for inclined orbits in 2D minimap (if added later)
 
 ------------------------------------------------------------------------
 
-## Star System Loading Pipelines
+## Elliptical Orbit Math Reference
 
-### Pipeline 1: ScriptableObject (existing, unchanged)
+### Kepler's Equation
 ```
-StarSystemDefinition (ScriptableObject)
-    → StarSystemLoader.Load()
-    → StarSystemBuildData
-    → StarSystemBuilder.Build()
-    → WorldRegistry + StarSystem
+M = E - e * sin(E)
+```
+- M = mean anomaly (linear time progression)
+- E = eccentric anomaly (geometric angle on auxiliary circle)
+- e = eccentricity
+
+### Newton-Raphson Solution
+```
+E_{n+1} = E_n - (E_n - e*sin(E_n) - M) / (1 - e*cos(E_n))
+```
+Initial guess: E₀ = M + e*sin(M)
+
+### Position in Orbital Plane
+```
+r = a * (1 - e * cos(E))
+x_orbit = a * (cos(E) - e)
+z_orbit = a * sqrt(1 - e²) * sin(E)
 ```
 
-### Pipeline 2: External JSON (NEW)
-```
-JSON file (TextAsset or file path)
-    → JsonStarSystemImporter.LoadFromTextAsset() / LoadFromFile() / LoadFromJson()
-    → StarSystemJson (DTO)
-    → StarSystemJsonValidator.Validate()
-    → ConvertToBuildData() → StarSystemBuildData
-    → StarSystemBuilder.Build()
-    → WorldRegistry + StarSystem
-```
+### 3D Rotation Sequence (Y-up convention)
+1. Rotate by ω (argument of periapsis) around Y in orbital plane
+2. Rotate by i (inclination) around X to tilt the plane
+3. Rotate by Ω (longitude of ascending node) around Y
 
-### Coordinator fallback chain
-```
-externalSystemFile (TextAsset) assigned?
-    → YES: JsonStarSystemImporter.LoadFromTextAsset()
-        → Success: use result
-        → Fail: log errors, fall through ↓
-starSystemDefinition (ScriptableObject) assigned?
-    → YES: StarSystemLoader.Load()
-        → Success: use result
-        → Fail: fall through ↓
-SampleStarSystemFactory.Create() (built-in fallback)
-```
+### Backward Compatibility
+When e = 0 and i = 0:
+- E = M (no Kepler solving)
+- x = a * cos(M), z = a * sin(M) — identical to original circular calculation
+- No rotation applied
 
 ------------------------------------------------------------------------
 
@@ -213,10 +226,10 @@ SampleStarSystemFactory.Create() (built-in fallback)
 
 **Option B: More Ships / Civilian Traffic** — more trader ships for visible trade network.
 
-**Option C: JSON Editor Tool** — in-editor preview and validation of JSON star system files.
+**Option C: Test Elliptical Orbits** — add eccentricity/inclination to sample system bodies to visually verify.
 
 **Option D: Prices & Money** — currency, station buy/sell prices based on demand/surplus.
 
 **Option E: Save/Load Foundation** — serialize WorldRegistry state to JSON, reload.
 
-Recommendation: **Option A or B** — player trading UI closes the first gameplay loop; more traders make the network visibly alive.
+Recommendation: **Option C** (quick visual verification) then **Option A or B**.

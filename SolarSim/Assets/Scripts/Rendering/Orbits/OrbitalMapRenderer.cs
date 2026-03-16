@@ -3,6 +3,7 @@ using UnityEngine;
 using SpaceSim.Shared.Identifiers;
 using SpaceSim.Shared.Math;
 using SpaceSim.Simulation.Core;
+using SpaceSim.Simulation.Orbits;
 using SpaceSim.Simulation.Time;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
@@ -198,15 +199,7 @@ namespace SpaceSim.Rendering.Orbits
             lr.startWidth = orbitLineBaseWidth;
             lr.endWidth = orbitLineBaseWidth;
 
-            float sceneRadius = scaleConfig != null
-                ? scaleConfig.WorldToSceneDistance(body.Orbit.SemiMajorAxis)
-                : (float)body.Orbit.SemiMajorAxis;
-
-            for (int i = 0; i < OrbitLineSegments; i++)
-            {
-                float angle = (float)i / OrbitLineSegments * Mathf.PI * 2f;
-                lr.SetPosition(i, new Vector3(sceneRadius * Mathf.Cos(angle), 0f, sceneRadius * Mathf.Sin(angle)));
-            }
+            SetOrbitLinePoints(lr, body.Orbit);
             _orbitLines[body.Id] = lr;
         }
 
@@ -217,20 +210,34 @@ namespace SpaceSim.Rendering.Orbits
                 var existingLr = _orbitLines[body.Id];
                 if (existingLr != null && body.Orbit != null)
                 {
-                    float sceneRadius = scaleConfig != null
-                        ? scaleConfig.WorldToSceneDistance(body.Orbit.SemiMajorAxis)
-                        : (float)body.Orbit.SemiMajorAxis;
-
-                    for (int i = 0; i < OrbitLineSegments; i++)
-                    {
-                        float angle = (float)i / OrbitLineSegments * Mathf.PI * 2f;
-                        existingLr.SetPosition(i, new Vector3(
-                            sceneRadius * Mathf.Cos(angle), 0f, sceneRadius * Mathf.Sin(angle)));
-                    }
+                    SetOrbitLinePoints(existingLr, body.Orbit);
                 }
                 return;
             }
             CreateOrbitLine(body);
+        }
+
+        /// <summary>
+        /// Set orbit line points using OrbitalPositionCalculator.
+        /// Supports elliptical, inclined, and circular orbits.
+        /// Points are in parent-local space (LineRenderer useWorldSpace = false).
+        /// </summary>
+        private void SetOrbitLinePoints(LineRenderer lr, World.ValueTypes.OrbitDefinition orbit)
+        {
+            if (lr == null || orbit == null) return;
+
+            float distScale = scaleConfig != null ? scaleConfig.DistanceScale : 1f;
+
+            for (int i = 0; i < OrbitLineSegments; i++)
+            {
+                double meanAnomaly = (double)i / OrbitLineSegments * 2.0 * System.Math.PI;
+                SimVec3 localPos = OrbitalPositionCalculator.CalculateOrbitPoint(orbit, meanAnomaly);
+
+                lr.SetPosition(i, new Vector3(
+                    (float)(localPos.X * distScale),
+                    (float)(localPos.Y * distScale),
+                    (float)(localPos.Z * distScale)));
+            }
         }
 
         private void SetOrbitLineVisible(EntityId bodyId, bool visible)

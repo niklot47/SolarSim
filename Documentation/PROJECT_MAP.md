@@ -26,7 +26,8 @@ Key files:
 - `Scripts/Simulation/Core/SampleStarSystemFactory.cs` — hardcoded fallback sample system
 - `Scripts/Simulation/Core/StarSystemBuilder.cs` — builds runtime entities from pure build data
 - `Scripts/Simulation/Core/WorldPositionResolver.cs` — single source of truth for body world positions
-- `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — circular orbit position in XZ plane
+- `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — **full Keplerian orbit position**: elliptical, inclined, and circular; surface position from lat/lon
+- `Scripts/Simulation/Orbits/KeplerSolver.cs` — **NEW** Newton-Raphson solver for Kepler's equation
 - `Scripts/Simulation/Ships/ShipMovementSystem.cs` — anchored travel with Global/LocalParent frame selection
 - `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing via TradeOpportunityResolver
 - `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution
@@ -59,7 +60,7 @@ Key files:
 - `Scripts/World/Entities/ResourceType.cs` — enum: Food, Metals, Fuel, Electronics
 - `Scripts/World/Entities/DockingPort.cs`, `DockingInfo.cs` — docking port model
 - `Scripts/World/Entities/StarSystem.cs` — container with body ids
-- `Scripts/World/ValueTypes/OrbitDefinition.cs` — Keplerian orbital elements
+- `Scripts/World/ValueTypes/OrbitDefinition.cs` — Keplerian orbital elements (a, e, i, Ω, ω, M₀, T)
 - `Scripts/World/ValueTypes/SpinDefinition.cs` — axial tilt, rotation period
 - `Scripts/World/Systems/WorldRegistry.cs` — central entity registry
 
@@ -67,9 +68,9 @@ Key files:
 
 Key files:
 - `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point
-- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services, **external JSON import support** via `externalSystemFile` field, fallback chain: JSON → ScriptableObject → sample
+- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services, external JSON import support
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions to build data
-- `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — scene visuals
+- `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — scene visuals, **elliptical orbit lines** via CalculateOrbitPoint()
 - `Scripts/Rendering/Planets/CelestialBodyView.cs` — body visual representation
 - `Scripts/Rendering/Cameras/OrbitalCameraController.cs` — camera controls
 - `Scripts/Rendering/Selection/SelectionBridge.cs` — selection ring + highlight
@@ -79,33 +80,11 @@ Key files:
 
 ### 4. UI
 
-Key files:
-- `Scripts/UI/Panels/ObjectListPanelController.cs` — hierarchical body list
-- `Scripts/UI/Panels/ObjectDetailsPanelController.cs` — compact body properties
-- `Scripts/UI/Panels/DetailModalController.cs` — full-screen modal
-- `Scripts/UI/Panels/TimeControlsPanelController.cs` — pause + speed buttons
-- `Scripts/UI/Core/BodyIconResolver.cs` — icon resolution
-- `Scripts/UI/Localization/UIStrings.cs` — centralized Russian string provider
+Key files: unchanged.
 
 ### 5. Data
 
-ScriptableObjects for static configuration, content authoring, **and external data import**.
-
-Rules:
-- Configuration only
-- Runtime mutable state must not live in ScriptableObjects
-- External data import adapters live here (allowed to use Unity types)
-
-Key files:
-- `Scripts/Data/Config/SceneScaleConfig.cs` — world-to-scene scaling parameters
-- `Scripts/Data/Definitions/CelestialBodyDefinition.cs` — serializable body definition
-- `Scripts/Data/Definitions/ShipDefinition.cs` — serializable ship definition
-- `Scripts/Data/Definitions/StationDefinition.cs` — serializable station definition
-- `Scripts/Data/Definitions/StarSystemDefinition.cs` — ScriptableObject containing body/ship/station lists
-- `Scripts/Data/Editor/SampleSystemAssetCreator.cs` — editor menu to create sample asset
-- `Scripts/Data/Import/StarSystemJsonDto.cs` — **NEW** JSON DTO classes (StarSystemJson, BodyJson, OrbitJson, SpinJson, StationJson, ShipJson)
-- `Scripts/Data/Import/StarSystemJsonValidator.cs` — **NEW** validates JSON structure before build
-- `Scripts/Data/Import/JsonStarSystemImporter.cs` — **NEW** adapter: JSON → StarSystemBuildData → StarSystemBuilder
+Key files: unchanged.
 
 ### Shared
 
@@ -125,11 +104,48 @@ Structured debug event and snapshot system. Unchanged.
 | SpaceSim.World | true | Shared |
 | SpaceSim.Simulation | true | Shared, World |
 | SpaceSim.Debug | false | Shared, Simulation, World |
-| SpaceSim.Data | false | Shared, World |
+| SpaceSim.Data | false | Shared, World, Simulation |
 | SpaceSim.UI | false | Shared, World, Simulation |
 | SpaceSim.Rendering | false | Shared, World, Simulation, Debug, UI, Data, Unity.InputSystem |
 
-Note: SpaceSim.Data already references SpaceSim.Simulation (for StarSystemBuilder/StarSystemBuildData). JsonStarSystemImporter uses StarSystemBuilder.Build() and build data types from Simulation.Core.
+------------------------------------------------------------------------
+
+## Orbital Calculation Pipeline
+
+### Position Calculation (per tick)
+```
+OrbitDefinition (a, e, i, Ω, ω, M₀, T)
+    ↓
+OrbitalPositionCalculator.CalculatePosition(orbit, simTime)
+    ↓
+Mean anomaly M = M₀ + 2π(t - t₀)/T
+    ↓
+[if e ≈ 0 and flat] → fast path: (a*cos(M), 0, a*sin(M))
+    ↓
+[if e > 0] KeplerSolver.Solve(M, e) → eccentric anomaly E
+    ↓
+Orbital plane: x = a(cosE - e), z = a√(1-e²)sinE
+    ↓
+[if inclined] Rotate by ω, i, Ω → world coordinates (x, y, z)
+    ↓
+WorldPositionResolver adds parent world position
+```
+
+### Orbit Line Rendering (per orbit line creation/update)
+```
+OrbitDefinition
+    ↓
+OrbitalPositionCalculator.CalculateOrbitPoint(orbit, meanAnomalyRad)
+    for 64 evenly-spaced mean anomaly values [0, 2π)
+    ↓
+Local positions in parent-relative space
+    ↓
+SceneScaleConfig.DistanceScale applied
+    ↓
+LineRenderer positions (useWorldSpace = false)
+    ↓
+LineRenderer transform.position = parent world position (updated each tick)
+```
 
 ------------------------------------------------------------------------
 
@@ -145,101 +161,16 @@ StarSystemDefinition (ScriptableObject)
     → EconomyInitializer.Initialize()
 ```
 
-### Pipeline 2: External JSON (NEW)
+### Pipeline 2: External JSON
 ```
 JSON file (TextAsset or file path)
-    → JsonStarSystemImporter.LoadFromTextAsset() / LoadFromFile() / LoadFromJson()
-    → StarSystemJson (DTO deserialization via JsonUtility)
-    → StarSystemJsonValidator.Validate() (errors → abort, warnings → log)
+    → JsonStarSystemImporter
+    → StarSystemJson (DTO)
+    → StarSystemJsonValidator.Validate()
     → ConvertToBuildData() → StarSystemBuildData
     → StarSystemBuilder.Build()
     → WorldRegistry + StarSystem
     → EconomyInitializer.Initialize()
-```
-
-### Coordinator fallback chain
-```
-1. externalSystemFile (TextAsset) assigned? → JSON import
-2. starSystemDefinition (ScriptableObject) assigned? → asset import
-3. SampleStarSystemFactory.Create() → built-in fallback
-```
-
-Both pipelines produce identical runtime entities through the shared StarSystemBuilder.
-
-------------------------------------------------------------------------
-
-## JSON Schema
-
-```json
-{
-  "systemName": "string",
-  "systemKey": "string",
-  "localizationKey": "string",
-
-  "bodies": [
-    {
-      "key": "string (unique)",
-      "name": "string (display name)",
-      "localizationKey": "string",
-      "type": "Star|Planet|Moon|Asteroid|SurfaceSite",
-      "parent": "string (key of parent body, empty for roots)",
-      "attachmentMode": "None|Orbit|Surface (optional, auto-detected)",
-      "radius": 1.0,
-      "isSelectable": true,
-      "hasSurface": false,
-      "soi": 0.0,
-      "orbit": {
-        "semiMajorAxis": 150.0,
-        "period": 120.0,
-        "eccentricity": 0.0,
-        "inclinationDeg": 0.0,
-        "longitudeOfAscendingNodeDeg": 0.0,
-        "argumentOfPeriapsisDeg": 0.0,
-        "meanAnomalyAtEpochDeg": 0.0,
-        "epochTime": 0.0,
-        "isPrograde": true
-      },
-      "spin": {
-        "axialTiltDeg": 0.0,
-        "rotationPeriod": 60.0,
-        "initialRotationDeg": 0.0
-      }
-    }
-  ],
-
-  "stations": [
-    {
-      "key": "string (unique)",
-      "name": "string",
-      "localizationKey": "string",
-      "kind": "Orbital|Surface",
-      "parentBody": "string (key of parent body)",
-      "radius": 0.06,
-      "orbitalRadius": 2.0,
-      "orbitalPeriod": 15.0,
-      "startAngleDeg": 0.0,
-      "rotationPeriod": 0.0,
-      "surfaceLatitudeDeg": 0.0,
-      "surfaceLongitudeDeg": 0.0,
-      "dockingPortCount": 0
-    }
-  ],
-
-  "ships": [
-    {
-      "key": "string (unique)",
-      "name": "string",
-      "localizationKey": "string",
-      "role": "Player|Trader|Patrol|Civilian",
-      "shipClass": "string",
-      "parentBody": "string (key of parent body)",
-      "radius": 0.03,
-      "orbitalRadius": 3.0,
-      "orbitalPeriod": 12.0,
-      "startAngleDeg": 0.0
-    }
-  ]
-}
 ```
 
 ------------------------------------------------------------------------

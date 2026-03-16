@@ -52,6 +52,7 @@
     <Compile Include="Assets\Scripts\Simulation\Core\SampleStarSystemFactory.cs" />
     <Compile Include="Assets\Scripts\Simulation\Ships\NPCShipScheduler.cs" />
     <Compile Include="Assets\Scripts\Simulation\Ships\ShipMovementSystem.cs" />
+    <Compile Include="Assets\Scripts\Simulation\Orbits\KeplerSolver.cs" />
     <Compile Include="Assets\Scripts\Simulation\Economy\TradeOpportunityResolver.cs" />
     <Compile Include="Assets\Scripts\Simulation\Economy\StationProductionConfig.cs" />
     <Compile Include="Assets\Scripts\Simulation\Economy\StationEconomyConfig.cs" />

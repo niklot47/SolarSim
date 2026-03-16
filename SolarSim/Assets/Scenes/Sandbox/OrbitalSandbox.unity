@@ -282,7 +282,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Cameras.OrbitalCameraController
   zoomSpeed: 50
   minDistance: 5
-  maxDistance: 200
+  maxDistance: 400
   panSpeed: 0.5
   rotateSpeed: 2
   focusLerpSpeed: 20
