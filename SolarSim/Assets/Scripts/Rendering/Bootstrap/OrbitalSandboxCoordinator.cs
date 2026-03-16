@@ -130,6 +130,11 @@ namespace SpaceSim.Rendering.Bootstrap
             if (mapRenderer != null)
             {
                 mapRenderer.Initialize(_registry, _currentSystem, clock, _positionResolver);
+
+                // Wire camera controller so orbit lines can read actual zoom level.
+                if (cameraController != null)
+                    mapRenderer.SetCameraController(cameraController);
+
                 mapRenderer.BuildSceneObjects();
 
                 _npcScheduler.SetPositionResolver(
@@ -389,7 +394,6 @@ namespace SpaceSim.Rendering.Bootstrap
                     UnityEngine.Debug.Log($"[SystemLoader] {result.Message}");
                     GameDebug.Log(DebugCategory.SIM, result.Message, source: "SystemLoader");
 
-                    // Log validation warnings if any.
                     if (result.Validation != null)
                     {
                         foreach (var warning in result.Validation.Warnings)
@@ -402,7 +406,6 @@ namespace SpaceSim.Rendering.Bootstrap
                     return result.System;
                 }
 
-                // JSON import failed — log errors and fall through.
                 UnityEngine.Debug.LogWarning($"[SystemLoader] External JSON import failed: {result.Message}");
                 GameDebug.LogWarning(DebugCategory.SIM,
                     $"External JSON import failed: {result.Message}", source: "SystemLoader");
@@ -453,14 +456,12 @@ namespace SpaceSim.Rendering.Bootstrap
             detailsPanel.Initialize(_registry, _selectionService);
             detailsPanel.SetupUI(uiRoot);
 
-            // Create and wire the modal detail controller.
             var modalController = gameObject.AddComponent<DetailModalController>();
             modalController.Initialize(_registry);
             modalController.SetupUI(uiRoot);
             modalController.OnLabelsVisibilityChanged = (visible) => labelController.Visible = visible;
             detailsPanel.SetModalController(modalController);
 
-            // Create input blocker to prevent camera zoom over UI panels and modal.
             var inputBlocker = gameObject.AddComponent<UIInputBlocker>();
             inputBlocker.Initialize(cameraController, uiDocument, modalController);
 

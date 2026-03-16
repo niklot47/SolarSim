@@ -43,6 +43,12 @@ namespace SpaceSim.Rendering.Cameras
         /// <summary>Current camera distance from focus point.</summary>
         public float CurrentDistance => currentDistance;
 
+        /// <summary>Minimum allowed zoom distance (from Inspector).</summary>
+        public float MinDistance => minDistance;
+
+        /// <summary>Maximum allowed zoom distance (from Inspector).</summary>
+        public float MaxDistance => maxDistance;
+
         /// <summary>
         /// When true, all camera input (zoom, pan, rotate) is suppressed.
         /// Set by UIInputBlocker when mouse is over panels or modal is open.

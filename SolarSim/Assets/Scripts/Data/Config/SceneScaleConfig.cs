@@ -16,10 +16,6 @@ namespace SpaceSim.Data.Config
         [Tooltip("Minimum scene diameter for any body")]
         public float MinBodyDiameter = 0.3f;
 
-        [Header("Orbit Line")]
-        public float OrbitLineBaseWidth = 0.05f;
-        public float OrbitLineMaxWidthMultiplier = 2.0f;
-
         public float WorldToSceneDistance(double worldDistance)
         {
             return (float)(worldDistance * DistanceScale);

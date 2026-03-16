@@ -281,7 +281,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Cameras.OrbitalCameraController
   zoomSpeed: 50
-  minDistance: 1
+  minDistance: 5
   maxDistance: 200
   panSpeed: 0.5
   rotateSpeed: 2
@@ -457,8 +457,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Orbits.OrbitalMapRenderer
   defaultBodyMaterial: {fileID: 2100000, guid: a8679835d429842428722c8c6b747521, type: 2}
   scaleConfig: {fileID: 11400000, guid: 6d4c6e166aa99794c9918fbfa574d086, type: 2}
-  nearDistance: 1
-  farDistance: 200
+  orbitLineMaterial: {fileID: 2100000, guid: a8679835d429842428722c8c6b747521, type: 2}
+  orbitLineBaseWidth: 0.01
+  orbitLineMaxMultiplier: 80
+  orbitLineCurveSigma: 2.5
 --- !u!1 &1162873945
 GameObject:
   m_ObjectHideFlags: 0
