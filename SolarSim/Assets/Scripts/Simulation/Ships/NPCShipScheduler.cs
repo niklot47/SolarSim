@@ -12,21 +12,23 @@ namespace SpaceSim.Simulation.Ships
     /// <summary>
     /// Automatically assigns new routes to NPC ships that have finished travelling.
     /// Also handles automatic docking at stations and undocking after wait time.
-    /// Trader ships perform cargo operations when docked.
+    /// Trader ships use TradeOpportunityResolver for smart route selection
+    /// and perform targeted cargo operations based on their TraderJob.
     /// Runs each tick after ShipMovementSystem.Update() and DockingSystem.Update().
     /// Pure C# — no UnityEngine dependency.
     ///
-    /// Docking behavior:
-    /// - Orbital station: ship arrives at station orbit → auto-dock after 0.5s delay.
-    /// - Surface station: ship arrives at parent body orbit (travel destination = surface station,
-    ///   but ShipMovementSystem parents to station's parent body). NPCShipScheduler detects
-    ///   the ship was targeting a surface station and requests docking.
-    /// - After undock: _pendingDeparture prevents re-docking loop, ship departs immediately.
+    /// Trader behavior (demand-driven):
+    /// 1. Ask TradeOpportunityResolver for best opportunity.
+    /// 2. Travel to source station, load specific resource.
+    /// 3. Travel to destination station, unload specific resource.
+    /// 4. Repeat. Falls back to random station if no opportunities exist.
     ///
-    /// Trader behavior (when docked):
-    /// 1. Unload all cargo to station.
-    /// 2. Load available resources from station.
-    /// 3. After DockingWaitTime: undock and travel to another station.
+    /// Trade job phase flow:
+    ///   GoingToSource → (dock at source) → LoadingAtSource → GoingToDestination →
+    ///   (dock at destination) → UnloadingAtDestination → job cleared → new job
+    ///
+    /// When trader is already docked at source when job is assigned:
+    ///   Cargo loaded immediately, phase set to GoingToDestination, ship flies to destination.
     /// </summary>
     public class NPCShipScheduler
     {
@@ -76,6 +78,10 @@ namespace SpaceSim.Simulation.Ships
         private Func<EntityId, double, SimVec3> _positionResolver;
         private DockingSystem _dockingSystem;
         private CargoTransferService _cargoTransfer;
+        private TradeOpportunityResolver _tradeResolver;
+
+        /// <summary>Optional callback for debug logging of trade route selection.</summary>
+        public Action<EntityId, string> OnTradeRouteSelected;
 
         public event Action<EntityId> OnRouteScheduled;
 
@@ -118,6 +124,14 @@ namespace SpaceSim.Simulation.Ships
             _cargoTransfer = cargoTransfer;
         }
 
+        /// <summary>
+        /// Set the trade opportunity resolver for demand-driven routing.
+        /// </summary>
+        public void SetTradeResolver(TradeOpportunityResolver tradeResolver)
+        {
+            _tradeResolver = tradeResolver;
+        }
+
         public void InvalidateDestinationCache()
         {
             _candidatesDirty = true;
@@ -142,8 +156,6 @@ namespace SpaceSim.Simulation.Ships
                 destination.StationInfo.Kind == StationKind.Surface &&
                 destination.StationInfo.HasDocking)
             {
-                // Ship arrived at the surface station's parent body orbit.
-                // Mark it for surface docking on the next scheduler tick.
                 _pendingSurfaceDock[shipId] = destinationId;
             }
         }
@@ -257,7 +269,7 @@ namespace SpaceSim.Simulation.Ships
 
         private void HandleDockedShip(CelestialBody ship, double simTime)
         {
-            // Perform cargo operations once when docked (for traders).
+            // Perform cargo operations once when docked.
             if (!_cargoHandled.Contains(ship.Id))
             {
                 PerformCargoOperations(ship);
@@ -279,7 +291,8 @@ namespace SpaceSim.Simulation.Ships
 
         /// <summary>
         /// Perform cargo load/unload operations for NPC ships when docked.
-        /// Traders: unload all cargo, then load available resources.
+        /// Traders with a TraderJob: perform targeted operations based on job phase.
+        /// Traders without a job: only unload cargo (do NOT load random resources).
         /// Other NPC roles: no cargo operations for now.
         /// </summary>
         private void PerformCargoOperations(CelestialBody ship)
@@ -290,20 +303,79 @@ namespace SpaceSim.Simulation.Ships
 
             var stationId = ship.ShipInfo.DockedAtStationId;
 
-            // Only Trader ships do cargo operations for now.
-            if (ship.ShipInfo.Role == ShipRole.Trader)
+            // Only Trader ships do cargo operations.
+            if (ship.ShipInfo.Role != ShipRole.Trader) return;
+
+            var job = ship.ShipInfo.CurrentTradeJob;
+
+            if (job != null)
             {
-                // Step 1: Unload all cargo to station.
+                PerformTradeJobCargoOps(ship, stationId, job);
+            }
+            else
+            {
+                // No active job — only unload cargo to free up hold.
+                // Do NOT load random resources — wait for a proper trade job.
+                _cargoTransfer.UnloadAll(ship.Id, stationId);
+            }
+        }
+
+        /// <summary>
+        /// Perform targeted cargo operations based on the trader's current job phase.
+        /// Only LoadingAtSource and UnloadingAtDestination are valid phases for docked cargo ops.
+        /// Validates that the ship is at the correct station for the current phase.
+        /// Other phases while docked indicate a logic error — just unload and clear job.
+        /// </summary>
+        private void PerformTradeJobCargoOps(CelestialBody ship, EntityId stationId, TraderJob job)
+        {
+            if (job.Phase == TraderJobPhase.LoadingAtSource)
+            {
+                // Verify we are actually at the source station.
+                if (stationId != job.SourceStationId)
+                {
+                    // Wrong station for loading — clear the job, unload, let scheduler pick new job.
+                    _cargoTransfer.UnloadAll(ship.Id, stationId);
+                    ship.ShipInfo.CurrentTradeJob = null;
+                    return;
+                }
+
+                // At source station: unload any irrelevant cargo first, then load target resource.
+                _cargoTransfer.UnloadAll(ship.Id, stationId);
+                _cargoTransfer.LoadFromStation(ship.Id, stationId, job.Resource, ship.ShipInfo.Cargo.FreeSpace);
+
+                // Advance to delivery phase.
+                job.Phase = TraderJobPhase.GoingToDestination;
+            }
+            else if (job.Phase == TraderJobPhase.UnloadingAtDestination)
+            {
+                // Verify we are actually at the destination station.
+                if (stationId != job.DestinationStationId)
+                {
+                    // Wrong station for unloading — clear the job, unload.
+                    _cargoTransfer.UnloadAll(ship.Id, stationId);
+                    ship.ShipInfo.CurrentTradeJob = null;
+                    return;
+                }
+
+                // At destination station: unload the target resource, then unload everything else.
+                _cargoTransfer.UnloadToStation(ship.Id, stationId, job.Resource, ship.ShipInfo.Cargo.GetAmount(job.Resource));
                 _cargoTransfer.UnloadAll(ship.Id, stationId);
 
-                // Step 2: Load available resources from station.
-                _cargoTransfer.LoadAny(ship.Id, stationId);
+                // Job complete — clear it.
+                ship.ShipInfo.CurrentTradeJob = null;
+            }
+            else
+            {
+                // GoingToSource or GoingToDestination while docked — unexpected.
+                // Just unload and clear the job so we can get a fresh assignment.
+                _cargoTransfer.UnloadAll(ship.Id, stationId);
+                ship.ShipInfo.CurrentTradeJob = null;
             }
         }
 
         /// <summary>
         /// Ship just undocked — schedule a new route immediately (skip idle delay).
-        /// Traders prefer station destinations.
+        /// Traders use trade job to determine next destination.
         /// </summary>
         private void ScheduleDepartureFromStation(CelestialBody ship, double simTime)
         {
@@ -447,19 +519,98 @@ namespace SpaceSim.Simulation.Ships
         }
 
         /// <summary>
-        /// Traders prefer stations as destinations for trade loops.
-        /// Falls back to any destination if no other station is available.
+        /// Traders use demand-driven routing via TradeOpportunityResolver.
+        /// If a trade job is active, follow it. Otherwise, find a new opportunity.
+        /// Falls back to random station if no opportunities exist.
+        ///
+        /// When the trader is already docked at the source station of a new job:
+        ///  - Load cargo immediately via CargoTransferService.
+        ///  - Set phase to GoingToDestination so the ship flies directly to destination.
+        ///  - This prevents the phase mismatch bug where LoadingAtSource phase
+        ///    reaches a different station.
         /// </summary>
         private EntityId PickTraderDestination(CelestialBody ship)
         {
-            // Prefer a different station than where we currently are.
-            EntityId excludeId = ship.ParentId;
+            var job = ship.ShipInfo.CurrentTradeJob;
 
-            // Also exclude the station we're docked at (if any).
+            // If we have an active job, follow its phases.
+            if (job != null)
+            {
+                if (job.Phase == TraderJobPhase.GoingToSource)
+                {
+                    return job.SourceStationId;
+                }
+                else if (job.Phase == TraderJobPhase.GoingToDestination)
+                {
+                    return job.DestinationStationId;
+                }
+                // Other phases should not reach PickDestination — clear invalid job.
+                ship.ShipInfo.CurrentTradeJob = null;
+            }
+
+            // No active job — try to find a new trade opportunity.
+            if (_tradeResolver != null && _tradeResolver.Opportunities.Count > 0)
+            {
+                var opportunity = _tradeResolver.FindBestForTrader(ship.Id, ship.ParentId);
+                if (opportunity.HasValue)
+                {
+                    var opp = opportunity.Value;
+                    var newJob = new TraderJob(opp.Resource, opp.SourceStationId, opp.DestinationStationId);
+
+                    // Check if trader is currently docked at the source station.
+                    // If so, load cargo immediately and skip directly to delivery.
+                    bool isDockedAtSource = ship.ShipInfo.IsDocked
+                        && ship.ShipInfo.DockedAtStationId == opp.SourceStationId;
+
+                    if (isDockedAtSource && _cargoTransfer != null)
+                    {
+                        // Load cargo now while still docked at source.
+                        _cargoTransfer.UnloadAll(ship.Id, opp.SourceStationId);
+                        double freeSpace = ship.ShipInfo.Cargo != null ? ship.ShipInfo.Cargo.FreeSpace : 100.0;
+                        _cargoTransfer.LoadFromStation(ship.Id, opp.SourceStationId, opp.Resource, freeSpace);
+
+                        newJob.Phase = TraderJobPhase.GoingToDestination;
+                        ship.ShipInfo.CurrentTradeJob = newJob;
+
+                        LogTradeRoute(ship, opp);
+                        return newJob.DestinationStationId;
+                    }
+
+                    // Not at source — normal flow: travel to source first.
+                    newJob.Phase = TraderJobPhase.GoingToSource;
+                    ship.ShipInfo.CurrentTradeJob = newJob;
+
+                    LogTradeRoute(ship, opp);
+                    return newJob.SourceStationId;
+                }
+            }
+
+            // Fallback: random station selection (legacy behavior).
+            return PickRandomStationDestination(ship);
+        }
+
+        /// <summary>
+        /// Log trade route selection via callback.
+        /// </summary>
+        private void LogTradeRoute(CelestialBody ship, TradeOpportunity opp)
+        {
+            var source = _registry.GetCelestialBody(opp.SourceStationId);
+            var dest = _registry.GetCelestialBody(opp.DestinationStationId);
+            string sourceName = source?.DisplayName ?? opp.SourceStationId.ToString();
+            string destName = dest?.DisplayName ?? opp.DestinationStationId.ToString();
+            OnTradeRouteSelected?.Invoke(ship.Id,
+                $"{ship.DisplayName} selected trade: {opp.Resource} {sourceName} -> {destName} (score={opp.Score:F1})");
+        }
+
+        /// <summary>
+        /// Fallback random station destination for traders when no trade opportunities exist.
+        /// </summary>
+        private EntityId PickRandomStationDestination(CelestialBody ship)
+        {
+            EntityId excludeId = ship.ParentId;
             if (ship.ShipInfo.DockedAtStationId.IsValid)
                 excludeId = ship.ShipInfo.DockedAtStationId;
 
-            // Try to pick a station first.
             if (_stationCandidates.Count > 1)
             {
                 int count = 0;
@@ -483,7 +634,6 @@ namespace SpaceSim.Simulation.Ships
                 }
             }
 
-            // Fallback: any destination.
             return PickRandomDestination(ship.ParentId);
         }
 

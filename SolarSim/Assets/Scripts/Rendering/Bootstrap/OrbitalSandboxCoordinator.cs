@@ -48,6 +48,11 @@ namespace SpaceSim.Rendering.Bootstrap
         [Min(0.5f)]
         [SerializeField] private float dockingApproachDuration = 2.0f;
 
+        [Header("Economy")]
+        [Tooltip("How often demand/trade opportunities are recalculated (sim-seconds).")]
+        [Min(1.0f)]
+        [SerializeField] private float demandEvalInterval = 5.0f;
+
         private WorldRegistry _registry;
         private StarSystem _currentSystem;
         private SelectionService _selectionService;
@@ -58,8 +63,12 @@ namespace SpaceSim.Rendering.Bootstrap
         private DockingSystem _dockingSystem;
         private CargoTransferService _cargoTransfer;
         private StationProductionSystem _productionSystem;
+        private StationDemandEvaluator _demandEvaluator;
+        private TradeOpportunityResolver _tradeResolver;
         private SimulationClock _clock;
         private ObjectListPanelController _listPanel;
+
+        private double _lastDemandEvalTime;
 
         public void Setup(SimulationClock clock)
         {
@@ -93,6 +102,17 @@ namespace SpaceSim.Rendering.Bootstrap
             _productionSystem = new StationProductionSystem(_registry);
             _productionSystem.OnProductionCycleCompleted += OnProductionCycleCompleted;
 
+            // Demand and trade systems.
+            _demandEvaluator = new StationDemandEvaluator(_registry);
+            _tradeResolver = new TradeOpportunityResolver(_registry);
+
+            // Initial demand evaluation so traders have data on first tick.
+            _demandEvaluator.EvaluateAll();
+            _tradeResolver.Resolve(
+                (bodyId, time) => _positionResolver.Resolve(bodyId, time),
+                _clock.CurrentTime);
+            _lastDemandEvalTime = _clock.CurrentTime;
+
             _npcScheduler = new NPCShipScheduler(
                 _registry, _shipMovement, () => _clock.CurrentTime,
                 npcTravelSpeed, npcMinTravelDuration, npcIdleDelay);
@@ -100,6 +120,8 @@ namespace SpaceSim.Rendering.Bootstrap
             _npcScheduler.DockingWaitTime = npcDockingWaitTime;
             _npcScheduler.SetDockingSystem(_dockingSystem);
             _npcScheduler.SetCargoTransfer(_cargoTransfer);
+            _npcScheduler.SetTradeResolver(_tradeResolver);
+            _npcScheduler.OnTradeRouteSelected += OnTradeRouteSelected;
 
             if (mapRenderer != null)
             {
@@ -130,7 +152,9 @@ namespace SpaceSim.Rendering.Bootstrap
                 $"{_soiResolver.GetStatus()}. " +
                 $"NPC: speed={npcTravelSpeed:F1} minDur={npcMinTravelDuration:F1} idle={npcIdleDelay:F1} " +
                 $"dockWait={npcDockingWaitTime:F1} approach={dockingApproachDuration:F1} " +
-                $"economy=enabled production=enabled");
+                $"economy=enabled production=enabled demand=enabled trade=enabled " +
+                $"demandInterval={demandEvalInterval:F1}s " +
+                $"{_tradeResolver.GetStatus()}");
         }
 
         private void RegisterDebugProviders()
@@ -168,6 +192,16 @@ namespace SpaceSim.Rendering.Bootstrap
             _npcScheduler?.Update();
             _productionSystem?.Update(simTime);
 
+            // Periodically re-evaluate demand and trade opportunities.
+            if (_demandEvaluator != null && simTime - _lastDemandEvalTime >= demandEvalInterval)
+            {
+                _demandEvaluator.EvaluateAll();
+                _tradeResolver.Resolve(
+                    (bodyId, time) => _positionResolver.Resolve(bodyId, time),
+                    simTime);
+                _lastDemandEvalTime = simTime;
+            }
+
             if (_soiResolver != null)
             {
                 var transitions = _soiResolver.UpdateAllShips(simTime);
@@ -182,7 +216,11 @@ namespace SpaceSim.Rendering.Bootstrap
         private void OnDestroy()
         {
             if (_shipMovement != null) _shipMovement.OnShipArrived -= OnShipArrived;
-            if (_npcScheduler != null) _npcScheduler.OnRouteScheduled -= OnNpcRouteScheduled;
+            if (_npcScheduler != null)
+            {
+                _npcScheduler.OnRouteScheduled -= OnNpcRouteScheduled;
+                _npcScheduler.OnTradeRouteSelected -= OnTradeRouteSelected;
+            }
             if (_dockingSystem != null)
             {
                 _dockingSystem.OnShipDocked -= OnShipDocked;
@@ -227,6 +265,20 @@ namespace SpaceSim.Rendering.Bootstrap
             GameDebug.Log(DebugCategory.SHIPS,
                 $"{ship?.DisplayName ?? shipId.ToString()} docked at {station?.DisplayName ?? stationId.ToString()}",
                 source: "Docking");
+
+            // Update trade job phase when docked.
+            if (ship?.ShipInfo?.CurrentTradeJob != null)
+            {
+                var job = ship.ShipInfo.CurrentTradeJob;
+                if (job.Phase == TraderJobPhase.GoingToSource && stationId == job.SourceStationId)
+                {
+                    job.Phase = TraderJobPhase.LoadingAtSource;
+                }
+                else if (job.Phase == TraderJobPhase.GoingToDestination && stationId == job.DestinationStationId)
+                {
+                    job.Phase = TraderJobPhase.UnloadingAtDestination;
+                }
+            }
         }
 
         private void OnShipUndocked(EntityId shipId, EntityId stationId)
@@ -266,6 +318,11 @@ namespace SpaceSim.Rendering.Bootstrap
             GameDebug.Log(DebugCategory.ECONOMY,
                 $"{stationName}{inputStr} produced {outputAmount:F0} {outputResource}",
                 source: "Production");
+        }
+
+        private void OnTradeRouteSelected(EntityId shipId, string message)
+        {
+            GameDebug.Log(DebugCategory.ECONOMY, message, source: "TradeAI");
         }
 
         private void LogSOITransition(SOITransition t)
@@ -365,5 +422,7 @@ namespace SpaceSim.Rendering.Bootstrap
         public DockingSystem Docking => _dockingSystem;
         public CargoTransferService CargoTransfer => _cargoTransfer;
         public StationProductionSystem Production => _productionSystem;
+        public StationDemandEvaluator DemandEvaluator => _demandEvaluator;
+        public TradeOpportunityResolver TradeResolver => _tradeResolver;
     }
 }

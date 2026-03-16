@@ -54,6 +54,19 @@ namespace SpaceSim.UI.Localization
             ["panel.details.production_cycle"] = "\u0426\u0438\u043a\u043b",
             ["panel.details.production_need"] = "\u041d\u0443\u0436\u043d\u043e",
 
+            // Demand / Surplus details.
+            ["panel.details.demand"] = "\u0421\u043f\u0440\u043e\u0441",
+            ["panel.details.surplus"] = "\u0418\u0437\u0431\u044b\u0442\u043e\u043a",
+            ["panel.details.demand_none"] = "\u041d\u0435\u0442",
+            ["panel.details.surplus_none"] = "\u041d\u0435\u0442",
+            ["panel.details.trade_job"] = "\u0417\u0430\u0434\u0430\u043d\u0438\u0435",
+            ["panel.details.trade_job_none"] = "\u041d\u0435\u0442",
+
+            // Demand level labels.
+            ["demand.high"] = "\u0412\u044b\u0441\u043e\u043a\u0438\u0439",
+            ["demand.medium"] = "\u0421\u0440\u0435\u0434\u043d\u0438\u0439",
+            ["demand.low"] = "\u041d\u0438\u0437\u043a\u0438\u0439",
+
             // Resource type names (full).
             ["resource.Food"] = "\u041f\u0440\u043e\u0434\u043e\u0432\u043e\u043b\u044c\u0441\u0442\u0432\u0438\u0435",
             ["resource.Metals"] = "\u041c\u0435\u0442\u0430\u043b\u043b\u044b",
@@ -100,6 +113,12 @@ namespace SpaceSim.UI.Localization
             ["shipstate.Docking"] = "\u0421\u0442\u044b\u043a\u043e\u0432\u043a\u0430",
             ["shipstate.Docked"] = "\u041f\u0440\u0438\u0441\u0442\u044b\u043a\u043e\u0432\u0430\u043d",
 
+            // Trade job phase names.
+            ["tradephase.GoingToSource"] = "\u041a \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u0443",
+            ["tradephase.LoadingAtSource"] = "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430",
+            ["tradephase.GoingToDestination"] = "\u041a \u043f\u043e\u043b\u0443\u0447\u0430\u0442\u0435\u043b\u044e",
+            ["tradephase.UnloadingAtDestination"] = "\u0420\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0430",
+
             // Time controls.
             ["time.pause"] = "\u041f\u0430\u0443\u0437\u0430",
             ["time.resume"] = "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c",
@@ -119,6 +138,7 @@ namespace SpaceSim.UI.Localization
             ["modal.section.docking"] = "\u0421\u0442\u044b\u043a\u043e\u0432\u043a\u0430",
             ["modal.section.economy"] = "\u042d\u043a\u043e\u043d\u043e\u043c\u0438\u043a\u0430",
             ["modal.section.production"] = "\u041f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u043e",
+            ["modal.section.demand"] = "\u0421\u043f\u0440\u043e\u0441 / \u0418\u0437\u0431\u044b\u0442\u043e\u043a",
 
             // Modal detail labels.
             ["modal.details.orbit_radius"] = "\u0420\u0430\u0434\u0438\u0443\u0441 \u043e\u0440\u0431\u0438\u0442\u044b",
@@ -147,5 +167,20 @@ namespace SpaceSim.UI.Localization
         /// Get short (abbreviated) resource name for compact UI display.
         /// </summary>
         public static string GetResourceShortName(string resourceType) => Get($"resource_short.{resourceType}");
+
+        /// <summary>
+        /// Get localized trade job phase name.
+        /// </summary>
+        public static string GetTradeJobPhaseName(string phase) => Get($"tradephase.{phase}");
+
+        /// <summary>
+        /// Get a demand level label based on score value.
+        /// </summary>
+        public static string GetDemandLevelLabel(double score)
+        {
+            if (score >= 60.0) return Get("demand.high");
+            if (score >= 25.0) return Get("demand.medium");
+            return Get("demand.low");
+        }
     }
 }

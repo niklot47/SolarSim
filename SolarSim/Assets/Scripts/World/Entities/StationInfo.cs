@@ -52,6 +52,13 @@ namespace SpaceSim.World.Entities
         /// </summary>
         public StationProductionState Production { get; set; }
 
+        /// <summary>
+        /// Demand and surplus evaluation for this station.
+        /// Updated periodically by StationDemandEvaluator.
+        /// Used by TradeOpportunityResolver and NPCShipScheduler.
+        /// </summary>
+        public StationDemand Demand { get; set; }
+
         public StationInfo()
         {
             Kind = StationKind.Orbital;
@@ -60,6 +67,7 @@ namespace SpaceSim.World.Entities
             Docking = null;
             Storage = null;
             Production = null;
+            Demand = null;
         }
 
         public StationInfo(StationKind kind, double latDeg = 0.0, double lonDeg = 0.0)
@@ -70,6 +78,7 @@ namespace SpaceSim.World.Entities
             Docking = null;
             Storage = null;
             Production = null;
+            Demand = null;
         }
 
         /// <summary>
@@ -97,14 +106,18 @@ namespace SpaceSim.World.Entities
         /// <summary>Whether this station has active production.</summary>
         public bool HasProduction => Production != null && Production.HasRecipe;
 
+        /// <summary>Whether this station has evaluated demand data.</summary>
+        public bool HasDemand => Demand != null;
+
         public override string ToString()
         {
             string dockStr = HasDocking ? $" {Docking}" : "";
             string storageStr = HasStorage ? $" {Storage}" : "";
             string prodStr = HasProduction ? $" {Production}" : "";
+            string demandStr = HasDemand ? $" {Demand}" : "";
             if (Kind == StationKind.Surface)
-                return $"StationInfo[{Kind} lat={SurfaceLatitudeDeg:F1} lon={SurfaceLongitudeDeg:F1}{dockStr}{storageStr}{prodStr}]";
-            return $"StationInfo[{Kind}{dockStr}{storageStr}{prodStr}]";
+                return $"StationInfo[{Kind} lat={SurfaceLatitudeDeg:F1} lon={SurfaceLongitudeDeg:F1}{dockStr}{storageStr}{prodStr}{demandStr}]";
+            return $"StationInfo[{Kind}{dockStr}{storageStr}{prodStr}{demandStr}]";
         }
     }
 }

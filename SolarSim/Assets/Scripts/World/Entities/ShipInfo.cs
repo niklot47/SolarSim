@@ -6,7 +6,7 @@ namespace SpaceSim.World.Entities
     /// <summary>
     /// Ship-specific data attached to a CelestialBody with BodyType.Ship.
     /// Stored as a plain data object — no Unity dependency.
-    /// Contains role, class, movement state, active route, docking state, and cargo.
+    /// Contains role, class, movement state, active route, docking state, cargo, and trade job.
     /// </summary>
     public class ShipInfo
     {
@@ -46,6 +46,15 @@ namespace SpaceSim.World.Entities
         /// Initialized by EconomyInitializer after star system build.
         /// </summary>
         public ShipCargo Cargo { get; set; }
+
+        // --- Trade Job ---
+
+        /// <summary>
+        /// Current trade assignment for trader ships.
+        /// Non-null when trader has an active trade route.
+        /// Managed by NPCShipScheduler.
+        /// </summary>
+        public TraderJob CurrentTradeJob { get; set; }
 
         // --- Docking fields ---
 
@@ -105,6 +114,7 @@ namespace SpaceSim.World.Entities
             OverrideWorldPosition = null;
             CurrentSOIBodyId = EntityId.None;
             Cargo = null;
+            CurrentTradeJob = null;
             DockedAtStationId = EntityId.None;
             DockedPortId = -1;
             DockingStartTime = 0.0;
@@ -124,6 +134,7 @@ namespace SpaceSim.World.Entities
             OverrideWorldPosition = null;
             CurrentSOIBodyId = EntityId.None;
             Cargo = null;
+            CurrentTradeJob = null;
             DockedAtStationId = EntityId.None;
             DockedPortId = -1;
             DockingStartTime = 0.0;
@@ -151,7 +162,8 @@ namespace SpaceSim.World.Entities
             string soiStr = CurrentSOIBodyId.IsValid ? $" soi={CurrentSOIBodyId}" : "";
             string dockStr = IsDocked ? $" docked={DockedAtStationId}:{DockedPortId}" : "";
             string cargoStr = Cargo != null ? $" {Cargo}" : "";
-            return $"ShipInfo[{Role} {State} key={ShipKey} class={ShipClass}{routeStr}{soiStr}{dockStr}{cargoStr}]";
+            string jobStr = CurrentTradeJob != null ? $" {CurrentTradeJob}" : "";
+            return $"ShipInfo[{Role} {State} key={ShipKey} class={ShipClass}{routeStr}{soiStr}{dockStr}{cargoStr}{jobStr}]";
         }
     }
 }
