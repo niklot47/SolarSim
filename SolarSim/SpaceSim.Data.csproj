@@ -51,8 +51,11 @@
   <ItemGroup>
     <Compile Include="Assets\Scripts\Data\Definitions\ShipDefinition.cs" />
     <Compile Include="Assets\Scripts\Data\Config\SceneScaleConfig.cs" />
+    <Compile Include="Assets\Scripts\Data\Import\StarSystemJsonValidator.cs" />
     <Compile Include="Assets\Scripts\Data\Editor\SampleSystemAssetCreator.cs" />
+    <Compile Include="Assets\Scripts\Data\Import\StarSystemJsonDto.cs" />
     <Compile Include="Assets\Scripts\Data\Definitions\StationDefinition.cs" />
+    <Compile Include="Assets\Scripts\Data\Import\JsonStarSystemImporter.cs" />
     <Compile Include="Assets\Scripts\Data\Definitions\StarSystemDefinition.cs" />
     <Compile Include="Assets\Scripts\Data\Definitions\CelestialBodyDefinition.cs" />
   </ItemGroup>
@@ -1156,6 +1159,7 @@
   <ItemGroup>
     <ProjectReference Include="SpaceSim.Shared.csproj" />
     <ProjectReference Include="SpaceSim.World.csproj" />
+    <ProjectReference Include="SpaceSim.Simulation.csproj" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <ItemGroup>

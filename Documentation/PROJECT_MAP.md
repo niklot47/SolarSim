@@ -21,14 +21,14 @@ Rules:
 - Enforced via asmdef with `noEngineReferences: true`
 
 Key files:
-- `Scripts/Simulation/Time/SimulationClock.cs` — simulation clock (pause, resume, time scale)
-- `Scripts/Simulation/Core/SelectionService.cs` — tracks selected entity id, fires events
+- `Scripts/Simulation/Time/SimulationClock.cs` — simulation clock
+- `Scripts/Simulation/Core/SelectionService.cs` — tracks selected entity id
 - `Scripts/Simulation/Core/SampleStarSystemFactory.cs` — hardcoded fallback sample system
 - `Scripts/Simulation/Core/StarSystemBuilder.cs` — builds runtime entities from pure build data
 - `Scripts/Simulation/Core/WorldPositionResolver.cs` — single source of truth for body world positions
 - `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — circular orbit position in XZ plane
 - `Scripts/Simulation/Ships/ShipMovementSystem.cs` — anchored travel with Global/LocalParent frame selection
-- `Scripts/Simulation/Ships/NPCShipScheduler.cs` — auto-assigns routes to NPC ships, **demand-driven trader routing** via TradeOpportunityResolver, targeted cargo ops based on TraderJob phase, OnTradeRouteSelected callback for debug logging
+- `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing via TradeOpportunityResolver
 - `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution
 - `Scripts/Simulation/Docking/DockingSystem.cs` — docking lifecycle
 - `Scripts/Simulation/Economy/CargoTransferService.cs` — cargo transfer operations
@@ -36,8 +36,8 @@ Key files:
 - `Scripts/Simulation/Economy/EconomyInitializer.cs` — initializes storage, production, and cargo
 - `Scripts/Simulation/Economy/StationProductionConfig.cs` — hardcoded production recipes
 - `Scripts/Simulation/Economy/StationProductionSystem.cs` — ticks production on all stations
-- `Scripts/Simulation/Economy/StationDemandEvaluator.cs` — **NEW** evaluates demand/surplus scores for all stations based on storage levels and production input requirements
-- `Scripts/Simulation/Economy/TradeOpportunityResolver.cs` — **NEW** scans station pairs for matching surplus/demand, produces scored trade route list
+- `Scripts/Simulation/Economy/StationDemandEvaluator.cs` — evaluates demand/surplus scores
+- `Scripts/Simulation/Economy/TradeOpportunityResolver.cs` — scans station pairs for trade routes
 
 ### 2. World
 
@@ -45,22 +45,21 @@ Game domain entities and shared world state models.
 
 Key files:
 - `Scripts/World/Entities/WorldEntity.cs` — base class (EntityId + DisplayName)
-- `Scripts/World/Entities/CelestialBody.cs` — body type, parent/child ids, orbit, spin, radius, SOIRadius, ShipInfo, StationInfo
-- `Scripts/World/Entities/ShipInfo.cs` — ship data including **CurrentTradeJob** field for trade assignment tracking
+- `Scripts/World/Entities/CelestialBody.cs` — body type, hierarchy, orbit, ShipInfo, StationInfo
+- `Scripts/World/Entities/ShipInfo.cs` — ship data including CurrentTradeJob
 - `Scripts/World/Entities/ShipRoute.cs` — travel route data
 - `Scripts/World/Entities/ShipCargo.cs` — ship cargo hold
-- `Scripts/World/Entities/StationInfo.cs` — station data including **Demand** field (StationDemand) for demand/surplus tracking
+- `Scripts/World/Entities/StationInfo.cs` — station data including Demand
 - `Scripts/World/Entities/StationStorage.cs` — station resource storage
 - `Scripts/World/Entities/StationProductionRecipe.cs` — production recipe
 - `Scripts/World/Entities/StationProductionState.cs` — production progress tracker
-- `Scripts/World/Entities/StationDemand.cs` — **NEW** demand and surplus scores per resource type
-- `Scripts/World/Entities/TradeOpportunity.cs` — **NEW** single trade route opportunity (resource, source, destination, score)
-- `Scripts/World/Entities/TraderJob.cs` — **NEW** trader's current trade assignment with phase tracking (GoingToSource/LoadingAtSource/GoingToDestination/UnloadingAtDestination)
+- `Scripts/World/Entities/StationDemand.cs` — demand and surplus scores
+- `Scripts/World/Entities/TradeOpportunity.cs` — single trade route opportunity
+- `Scripts/World/Entities/TraderJob.cs` — trader's current trade assignment
 - `Scripts/World/Entities/ResourceType.cs` — enum: Food, Metals, Fuel, Electronics
-- `Scripts/World/Entities/DockingPort.cs` — single docking port
-- `Scripts/World/Entities/DockingInfo.cs` — docking capability container
-- `Scripts/World/Entities/StarSystem.cs` — container with root body ids and all body ids
-- `Scripts/World/ValueTypes/OrbitDefinition.cs` — full Keplerian orbital elements
+- `Scripts/World/Entities/DockingPort.cs`, `DockingInfo.cs` — docking port model
+- `Scripts/World/Entities/StarSystem.cs` — container with body ids
+- `Scripts/World/ValueTypes/OrbitDefinition.cs` — Keplerian orbital elements
 - `Scripts/World/ValueTypes/SpinDefinition.cs` — axial tilt, rotation period
 - `Scripts/World/Systems/WorldRegistry.cs` — central entity registry
 
@@ -68,7 +67,7 @@ Key files:
 
 Key files:
 - `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point
-- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services including **StationDemandEvaluator** and **TradeOpportunityResolver**, periodic demand evaluation, trade route logging
+- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services, **external JSON import support** via `externalSystemFile` field, fallback chain: JSON → ScriptableObject → sample
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions to build data
 - `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — scene visuals
 - `Scripts/Rendering/Planets/CelestialBodyView.cs` — body visual representation
@@ -82,29 +81,166 @@ Key files:
 
 Key files:
 - `Scripts/UI/Panels/ObjectListPanelController.cs` — hierarchical body list
-- `Scripts/UI/Panels/ObjectDetailsPanelController.cs` — compact body properties with demand/surplus and trade job display
+- `Scripts/UI/Panels/ObjectDetailsPanelController.cs` — compact body properties
 - `Scripts/UI/Panels/DetailModalController.cs` — full-screen modal
 - `Scripts/UI/Panels/TimeControlsPanelController.cs` — pause + speed buttons
 - `Scripts/UI/Core/BodyIconResolver.cs` — icon resolution
-- `Scripts/UI/Localization/UIStrings.cs` — centralized Russian string provider including demand/surplus/trade labels
+- `Scripts/UI/Localization/UIStrings.cs` — centralized Russian string provider
 
 ### 5. Data
 
-Unchanged from previous step.
+ScriptableObjects for static configuration, content authoring, **and external data import**.
+
+Rules:
+- Configuration only
+- Runtime mutable state must not live in ScriptableObjects
+- External data import adapters live here (allowed to use Unity types)
+
+Key files:
+- `Scripts/Data/Config/SceneScaleConfig.cs` — world-to-scene scaling parameters
+- `Scripts/Data/Definitions/CelestialBodyDefinition.cs` — serializable body definition
+- `Scripts/Data/Definitions/ShipDefinition.cs` — serializable ship definition
+- `Scripts/Data/Definitions/StationDefinition.cs` — serializable station definition
+- `Scripts/Data/Definitions/StarSystemDefinition.cs` — ScriptableObject containing body/ship/station lists
+- `Scripts/Data/Editor/SampleSystemAssetCreator.cs` — editor menu to create sample asset
+- `Scripts/Data/Import/StarSystemJsonDto.cs` — **NEW** JSON DTO classes (StarSystemJson, BodyJson, OrbitJson, SpinJson, StationJson, ShipJson)
+- `Scripts/Data/Import/StarSystemJsonValidator.cs` — **NEW** validates JSON structure before build
+- `Scripts/Data/Import/JsonStarSystemImporter.cs` — **NEW** adapter: JSON → StarSystemBuildData → StarSystemBuilder
 
 ### Shared
 
-Unchanged from previous step.
+Cross-cutting utilities shared by all layers. Unchanged.
 
 ### Debug
 
-Unchanged from previous step.
+Structured debug event and snapshot system. Unchanged.
 
 ------------------------------------------------------------------------
 
 ## Assembly Definitions
 
-Unchanged from previous step.
+| Assembly | noEngineReferences | Dependencies |
+|---|---|---|
+| SpaceSim.Shared | true | (none) |
+| SpaceSim.World | true | Shared |
+| SpaceSim.Simulation | true | Shared, World |
+| SpaceSim.Debug | false | Shared, Simulation, World |
+| SpaceSim.Data | false | Shared, World |
+| SpaceSim.UI | false | Shared, World, Simulation |
+| SpaceSim.Rendering | false | Shared, World, Simulation, Debug, UI, Data, Unity.InputSystem |
+
+Note: SpaceSim.Data already references SpaceSim.Simulation (for StarSystemBuilder/StarSystemBuildData). JsonStarSystemImporter uses StarSystemBuilder.Build() and build data types from Simulation.Core.
+
+------------------------------------------------------------------------
+
+## Star System Loading Pipelines
+
+### Pipeline 1: ScriptableObject (existing)
+```
+StarSystemDefinition (ScriptableObject)
+    → StarSystemLoader.Load()
+    → StarSystemBuildData
+    → StarSystemBuilder.Build()
+    → WorldRegistry + StarSystem
+    → EconomyInitializer.Initialize()
+```
+
+### Pipeline 2: External JSON (NEW)
+```
+JSON file (TextAsset or file path)
+    → JsonStarSystemImporter.LoadFromTextAsset() / LoadFromFile() / LoadFromJson()
+    → StarSystemJson (DTO deserialization via JsonUtility)
+    → StarSystemJsonValidator.Validate() (errors → abort, warnings → log)
+    → ConvertToBuildData() → StarSystemBuildData
+    → StarSystemBuilder.Build()
+    → WorldRegistry + StarSystem
+    → EconomyInitializer.Initialize()
+```
+
+### Coordinator fallback chain
+```
+1. externalSystemFile (TextAsset) assigned? → JSON import
+2. starSystemDefinition (ScriptableObject) assigned? → asset import
+3. SampleStarSystemFactory.Create() → built-in fallback
+```
+
+Both pipelines produce identical runtime entities through the shared StarSystemBuilder.
+
+------------------------------------------------------------------------
+
+## JSON Schema
+
+```json
+{
+  "systemName": "string",
+  "systemKey": "string",
+  "localizationKey": "string",
+
+  "bodies": [
+    {
+      "key": "string (unique)",
+      "name": "string (display name)",
+      "localizationKey": "string",
+      "type": "Star|Planet|Moon|Asteroid|SurfaceSite",
+      "parent": "string (key of parent body, empty for roots)",
+      "attachmentMode": "None|Orbit|Surface (optional, auto-detected)",
+      "radius": 1.0,
+      "isSelectable": true,
+      "hasSurface": false,
+      "soi": 0.0,
+      "orbit": {
+        "semiMajorAxis": 150.0,
+        "period": 120.0,
+        "eccentricity": 0.0,
+        "inclinationDeg": 0.0,
+        "longitudeOfAscendingNodeDeg": 0.0,
+        "argumentOfPeriapsisDeg": 0.0,
+        "meanAnomalyAtEpochDeg": 0.0,
+        "epochTime": 0.0,
+        "isPrograde": true
+      },
+      "spin": {
+        "axialTiltDeg": 0.0,
+        "rotationPeriod": 60.0,
+        "initialRotationDeg": 0.0
+      }
+    }
+  ],
+
+  "stations": [
+    {
+      "key": "string (unique)",
+      "name": "string",
+      "localizationKey": "string",
+      "kind": "Orbital|Surface",
+      "parentBody": "string (key of parent body)",
+      "radius": 0.06,
+      "orbitalRadius": 2.0,
+      "orbitalPeriod": 15.0,
+      "startAngleDeg": 0.0,
+      "rotationPeriod": 0.0,
+      "surfaceLatitudeDeg": 0.0,
+      "surfaceLongitudeDeg": 0.0,
+      "dockingPortCount": 0
+    }
+  ],
+
+  "ships": [
+    {
+      "key": "string (unique)",
+      "name": "string",
+      "localizationKey": "string",
+      "role": "Player|Trader|Patrol|Civilian",
+      "shipClass": "string",
+      "parentBody": "string (key of parent body)",
+      "radius": 0.03,
+      "orbitalRadius": 3.0,
+      "orbitalPeriod": 12.0,
+      "startAngleDeg": 0.0
+    }
+  ]
+}
+```
 
 ------------------------------------------------------------------------
 
@@ -118,40 +254,6 @@ StationProductionSystem.Update()
 [Periodic] StationDemandEvaluator.EvaluateAll() + TradeOpportunityResolver.Resolve()
 SOIResolver.UpdateAllShips()
 ```
-
-Note: Demand evaluation runs every `demandEvalInterval` sim-seconds (default 5s), not every tick.
-
-------------------------------------------------------------------------
-
-## Trade System Pipeline
-
-```
-StationProductionSystem produces/consumes resources
-    ↓
-StationDemandEvaluator.EvaluateAll() (periodic)
-    - Scans all stations
-    - Computes demand scores from production input needs + low storage
-    - Computes surplus scores from high storage + production output
-    - Stores on StationInfo.Demand
-    ↓
-TradeOpportunityResolver.Resolve() (periodic)
-    - For each station pair: match surplus at A with demand at B
-    - Score = (demand × surplus) / distance
-    - Sorted by score descending
-    ↓
-NPCShipScheduler.PickTraderDestination()
-    - Asks TradeOpportunityResolver.FindBestForTrader()
-    - Creates TraderJob (resource, source, destination)
-    - Phase: GoingToSource → LoadingAtSource → GoingToDestination → UnloadingAtDestination
-    ↓
-Trader travels to source station → docks → loads target resource
-    ↓
-Trader travels to destination station → docks → unloads target resource
-    ↓
-Job complete → TraderJob cleared → next opportunity requested
-```
-
-Fallback: if no trade opportunities exist, traders use random station selection (legacy behavior).
 
 ------------------------------------------------------------------------
 

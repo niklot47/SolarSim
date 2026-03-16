@@ -152,11 +152,13 @@ MonoBehaviour:
   cameraController: {fileID: 137804995}
   uiDocument: {fileID: 1837812490}
   starSystemDefinition: {fileID: 11400000, guid: 152fe9861eff72f429025f0ad47ecf5b, type: 2}
+  externalSystemFile: {fileID: 4900000, guid: 50249e285d956444e9e8cf2717b2c493, type: 3}
   npcTravelSpeed: 10
   npcMinTravelDuration: 3
   npcIdleDelay: 3
   npcDockingWaitTime: 5
   dockingApproachDuration: 2
+  demandEvalInterval: 5
 --- !u!4 &81263134
 Transform:
   m_ObjectHideFlags: 0
@@ -283,7 +285,7 @@ MonoBehaviour:
   maxDistance: 200
   panSpeed: 0.5
   rotateSpeed: 2
-  focusLerpSpeed: 5
+  focusLerpSpeed: 20
   currentDistance: 80
   pitch: 45
   yaw: 0
@@ -453,7 +455,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 25ba16f9d29c68744b4587a97a742461, type: 3}
   m_Name: 
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Orbits.OrbitalMapRenderer
-  defaultBodyMaterial: {fileID: 0}
+  defaultBodyMaterial: {fileID: 2100000, guid: a8679835d429842428722c8c6b747521, type: 2}
   scaleConfig: {fileID: 11400000, guid: 6d4c6e166aa99794c9918fbfa574d086, type: 2}
   nearDistance: 1
   farDistance: 200

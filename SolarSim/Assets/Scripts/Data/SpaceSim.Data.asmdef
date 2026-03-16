@@ -3,7 +3,8 @@
     "rootNamespace": "SpaceSim.Data",
     "references": [
         "SpaceSim.Shared",
-        "SpaceSim.World"
+        "SpaceSim.World",
+        "SpaceSim.Simulation"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

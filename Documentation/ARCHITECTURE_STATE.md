@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 13b — Trade AI Bugfix (same-station cargo ops, random loading).
+Last updated after: Step 14 — External Star System Import Foundation (JSON loader).
 
 ------------------------------------------------------------------------
 
@@ -22,9 +22,6 @@ Last updated after: Step 13b — Trade AI Bugfix (same-station cargo ops, random
 - **DebugInvariantChecker** — 7 automated checks: NaN/Infinity positions, duplicate ids, negative cargo, negative storage, orphaned children, docking consistency, self-parenting
 - **DebugExportUtility** — JSON serialization + file export to `persistentDataPath/debug_bundles/`
 - **DebugBundle** — complete export: metadata, status, events, errors, snapshots, invariant violations
-- Context menu actions on GameBootstrap
-- GameBootstrap updates `SetContext()` each frame
-- Coordinator registers all snapshot providers and sets WorldRegistry for invariant checking
 
 ### Orbital Sandbox
 - **CelestialBody** — domain entity with orbital/spin data, parent-child hierarchy, ShipInfo, StationInfo, SOIRadius
@@ -40,136 +37,93 @@ Last updated after: Step 13b — Trade AI Bugfix (same-station cargo ops, random
 ### Star System Data Loading
 - **CelestialBodyDefinition / ShipDefinition / StationDefinition** — serializable Inspector-authored data
 - **StarSystemDefinition** — ScriptableObject with body list + ship list + station list
-- **StarSystemBuilder** — pure C# builder (5 phases)
-- **StarSystemLoader** — Unity-side adapter
+- **StarSystemBuilder** — pure C# builder (5 phases: bodies, parents, register, ships, stations)
+- **StarSystemLoader** — Unity-side adapter, converts ScriptableObject definitions to build data
 - **SampleSystemAssetCreator** — editor menu to create sample asset
 - **SampleStarSystemFactory** — hardcoded fallback
 
+### External Star System Import (NEW)
+- **StarSystemJsonDto** — pure DTO classes: StarSystemJson, BodyJson, OrbitJson, SpinJson, StationJson, ShipJson
+- **StarSystemJsonValidator** — validates JSON structure before conversion:
+  - Duplicate key detection across bodies, stations, ships
+  - Parent key existence validation
+  - Orbit parameter validity (positive period, non-negative semi-major axis)
+  - Body type, station kind, ship role enum validation
+  - Self-parenting detection
+  - Returns JsonValidationResult with errors and warnings
+- **JsonStarSystemImporter** — adapter: JSON → StarSystemBuildData → StarSystemBuilder
+  - LoadFromTextAsset(TextAsset, WorldRegistry) — for Inspector-assigned files
+  - LoadFromFile(string path, WorldRegistry) — for runtime file loading
+  - LoadFromJson(string json, WorldRegistry) — core method
+  - Returns ImportResult with Success, System, Validation, counts, message
+  - Full error handling at every step (parse, validate, convert, build)
+- **SampleExternalSystem.json** — example JSON file matching the sample Sol system
+- **OrbitalSandboxCoordinator** — updated with `externalSystemFile` Inspector field
+  - Fallback chain: External JSON → StarSystemDefinition → SampleStarSystemFactory
+  - Debug logging via GameDebug for all import paths
+
 ### Stations Foundation
-- Two station kinds: **Orbital** (AttachmentMode.Orbit) and **Surface** (AttachmentMode.Surface)
-- **StationInfo** — station metadata: StationKind, SurfaceLatitudeDeg, SurfaceLongitudeDeg, DockingInfo, Storage, Production, **Demand**
-- Sample stations: Орбита-1 (Terra, 3 ports), Терра-1 (Terra surface, 2 ports), Фобос (Ares, 2 ports), Арес-1 (Ares surface, 2 ports)
+- Two station kinds: **Orbital** and **Surface**
+- **StationInfo** — station metadata including Demand field
+- Sample stations: Орбита-1, Терра-1, Фобос, Арес-1
 
 ### Docking Foundation
-- **DockingPort** — single port model
-- **DockingInfo** — port container on StationInfo
-- **DockingSystem** — pure C# simulation service in Simulation layer
+- **DockingPort**, **DockingInfo**, **DockingSystem** — unchanged from previous step
 
 ### Economy + Cargo Foundation
-- **ResourceType** — enum: Food, Metals, Fuel, Electronics
-- **StationStorage** — dictionary-based resource storage on stations
-- **ShipCargo** — dictionary-based cargo hold on ships with capacity enforcement
-- **CargoTransferService** — pure C# service: LoadFromStation, UnloadToStation, UnloadAll, LoadAny
-- **StationEconomyConfig** — hardcoded initial resource loadouts per station
-- **EconomyInitializer** — called after star system build
+- **ResourceType**, **StationStorage**, **ShipCargo**, **CargoTransferService** — unchanged
+- **StationEconomyConfig**, **EconomyInitializer** — unchanged
 
 ### Station Production Foundation
-- **StationProductionRecipe** — pure data model in World layer
-- **StationProductionState** — progress tracker in World layer
-- **StationProductionConfig** — hardcoded recipes per station localization key in Simulation layer
-- **StationProductionSystem** — pure C# simulation service in Simulation layer
-- **Production chain** (sample system):
-  - Терра-1: produces 10 Food / 5s (basic, no inputs)
-  - Орбита-1: consumes 8 Food → produces 5 Electronics / 8s
-  - Арес-1: consumes 4 Electronics → produces 8 Metals / 7s
-  - Фобос: consumes 6 Metals → produces 12 Fuel / 6s
+- **StationProductionRecipe**, **StationProductionState**, **StationProductionConfig**, **StationProductionSystem** — unchanged
 
 ### Station Demand + Trade Opportunity System
-- **StationDemand** — World layer data model: demand scores and surplus scores per resource type
-- **TradeOpportunity** — World layer data struct: resource, source station, destination station, priority score
-- **TraderJob** — World layer data model: resource, source/destination station, phase (GoingToSource/LoadingAtSource/GoingToDestination/UnloadingAtDestination)
-- **StationDemandEvaluator** — Simulation layer service, evaluates all stations periodically
-  - Demand from production inputs: if storage < inputPerCycle × 3, demand increases
-  - General demand: any resource below 20 units gets low-priority demand
-  - Surplus: resource above 50 units, boosted for production outputs
-- **TradeOpportunityResolver** — Simulation layer service, scans all station pairs
-  - Score formula: (demand × surplus) / distance
-  - Sorted by score descending — best opportunities first
-- **ShipInfo.CurrentTradeJob** — nullable TraderJob field tracks active trade assignment
-- **StationInfo.Demand** — nullable StationDemand field, updated by evaluator
-- **NPCShipScheduler trader behavior**:
-  - Traders ask TradeOpportunityResolver for best opportunity
-  - Creates TraderJob with correct phase management
-  - If docked at source: loads cargo immediately, phase = GoingToDestination
-  - If not at source: phase = GoingToSource, coordinator updates to LoadingAtSource on dock
-  - Targeted cargo ops: at source loads only target resource, at destination unloads target resource
-  - Station validation: cargo ops verify ship is at correct station for current phase
-  - Without active job: traders only unload (no random loading)
-  - Falls back to random station if no opportunities exist
-  - Debug logging: OnTradeRouteSelected logs route selection (category ECONOMY, source TradeAI)
-- **OrbitalSandboxCoordinator**:
-  - Creates and wires StationDemandEvaluator + TradeOpportunityResolver
-  - Initial evaluation on setup
-  - Periodic re-evaluation every demandEvalInterval sim-seconds (configurable, default 5s)
-  - OnShipDocked updates TraderJob phase (GoingToSource→LoadingAtSource, GoingToDestination→UnloadingAtDestination)
-
-### Verified Trade Behavior (from debug bundles at t=6000+ sim-s)
-- 0 errors, 0 invariant violations, 0 same-station load+unload incidents
-- Trade routes follow production chain exactly:
-  - **Food: Терра-1 → Орбита-1** (8 trips) — feeds electronics production
-  - **Metals: Арес-1 → Фобос** (8 trips) — feeds fuel production
-  - **Electronics: Орбита-1 → Арес-1** (5 trips) — feeds metals production
-- Every cargo transfer is a clean pair: load at source, unload at different destination
-- Self-organizing circular trade network confirmed
+- **StationDemand**, **TradeOpportunity**, **TraderJob** — unchanged
+- **StationDemandEvaluator**, **TradeOpportunityResolver** — unchanged
+- **NPCShipScheduler** — demand-driven trader routing — unchanged
 
 ### Selection and Interaction
-- **SelectionService** — pure C# selection state with events
-- **SelectionBridge** — selection ring, highlight, camera focus
-- **BodyClickHandler** — raycast click selection (UI Toolkit aware)
+- Unchanged from previous step
 
 ### UI Panels
-- **ObjectListPanelController** — hierarchical body list with PNG icon support
-- **ObjectDetailsPanelController** — compact body properties panel
-- **DetailModalController** — full-screen modal window with tabbed interface
-- **TimeControlsPanelController** — pause + x1/x10/x100
-- **UIInputBlocker** — blocks camera zoom/pan/rotate when mouse is over UI panels
-- **BodyIconResolver** — maps body types to PNG icon paths
-- **UIStrings** — Russian strings including demand/surplus/trade labels
+- Unchanged from previous step
 
 ### Camera and Labels
-- **OrbitalCameraController** — pan/zoom/rotate/smooth focus
-- **BodyLabelController** — IMGUI labels with zoom fade
+- Unchanged from previous step
 
-### Ships Foundation
-- CelestialBody with BodyType.Ship + ShipInfo (includes CurrentTradeJob)
-
-### Ship Movement (Anchored Travel Model)
-- **ShipMovementSystem** — pure C# simulation, unchanged
-
-### NPC Scheduling
-- **NPCShipScheduler** — pure C# scheduler with demand-driven trader routing
-
-### SOI Foundation
-- **SOIResolver** — unchanged
-
-### Bootstrap and Coordination
-- **GameBootstrap** — unchanged
-- **OrbitalSandboxCoordinator** — wires all systems including demand/trade
+### Ships, Ship Movement, NPC Scheduling, SOI, Bootstrap
+- Unchanged from previous step (except coordinator LoadStarSystem method)
 
 ------------------------------------------------------------------------
 
 ## Current Temporary Architectural Decisions
 
 ### Ships as CelestialBody + ShipInfo
-Same as before. CurrentTradeJob added to ShipInfo.
+Same as before.
 
 ### Stations as CelestialBody + StationInfo
-Same as before. StationDemand added to StationInfo.
+Same as before.
 
 ### Transit parenting to root star
 Unchanged.
 
 ### Inspector serialization: float not double
-Unchanged. demandEvalInterval added as float.
+Unchanged.
 
 ### No prices or money
-Cargo transfer is free and instant. Demand/surplus scoring is not price-based.
+Unchanged.
 
 ### Demand thresholds are hardcoded
-StationDemandEvaluator uses hardcoded thresholds. Future: configurable per station.
+Unchanged.
 
-### Trade scoring is simple
-Score = demand × surplus / distance. No multi-hop optimization or competing trader avoidance.
+### JSON deserialization uses Unity JsonUtility
+JsonUtility requires [Serializable] and public fields. Nested objects (orbit, spin) must not be null in JSON. Future: consider Newtonsoft JSON for more flexible parsing (nullable fields, comments, etc.).
+
+### JSON import lives in Data layer
+JsonStarSystemImporter uses UnityEngine.TextAsset and JsonUtility, so it belongs in SpaceSim.Data (which allows Unity references). The DTO classes and validator also live in Data layer for colocation.
+
+### JSON schema is not versioned
+No schema version field yet. Future: add "schemaVersion" field for migration support.
 
 ------------------------------------------------------------------------
 
@@ -177,13 +131,13 @@ Score = demand × surplus / distance. No multi-hop optimization or competing tra
 
 | System | Notes |
 |---|---|
+| JSON schema versioning | Version field for migration support |
+| JSON editor tool | In-editor preview/validation of JSON files |
+| Multi-system support | Loading multiple star systems simultaneously |
 | Prices / Money | Currency, buy/sell prices, supply/demand |
-| Dynamic pricing | Price fluctuation based on supply/demand |
 | Player trading UI | Buy/sell interface for player at docked station |
 | Complex factories | Multi-input, multi-output production |
 | Economic AI | Multi-hop routes, profit maximization |
-| Trader competition | Multiple traders avoiding same routes |
-| Storage capacity limits | Per-resource caps on stations |
 | Contracts | Task definition, assignment |
 | Factions | Entities, relationships, territory |
 | Advanced navigation | Pathfinding, waypoints, SOI-aware routing |
@@ -199,44 +153,70 @@ Score = demand × surplus / distance. No multi-hop optimization or competing tra
 ## Architecture Health Notes
 
 ### Clean boundaries maintained
-- All demand/trade classes are pure C# — no UnityEngine references
-- StationDemand, TradeOpportunity, TraderJob are pure data in World layer
-- StationDemandEvaluator and TradeOpportunityResolver are pure C# in Simulation layer
-- NPCShipScheduler remains pure C# with TradeResolver injected
-- No existing system APIs changed — only new methods/fields added
+- JSON DTO classes are pure [Serializable] C# — no logic, only data
+- StarSystemJsonValidator is pure C# — no Unity dependency (lives in Data for colocation)
+- JsonStarSystemImporter is in Data layer — uses UnityEngine.JsonUtility and TextAsset (appropriate)
+- No changes to Simulation or World layers
+- StarSystemBuilder, WorldRegistry, ShipMovementSystem, DockingSystem — NOT modified
+- Import pipeline feeds into existing StarSystemBuildData → StarSystemBuilder.Build() pipeline
+- Both ScriptableObject and JSON pipelines produce identical runtime entities
 
 ### Known technical debt
-- SampleStarSystemFactory uses Russian display names (should use localization keys)
-- Unity 6 EntityId conflict requires using-alias in Rendering/UI files
-- OnGUI labels — acceptable for MVP
-- Ship travel is linear interpolation (not physically realistic)
-- Docking approach is linear interpolation in local space
-- Transit parenting is a UI convenience hack
-- ObjectListPanelController.Refresh() rebuilds entire list (fine at current scale)
-- SOI values are placeholder approximations
-- Surface station position is fixed relative to parent (no spin coupling)
-- Docking port positions are auto-generated
-- Docked ship visual is just positioned at port
-- DebugExportUtility uses manual JSON builder
-- Debug JSON locale issue: double formatting uses system locale (comma vs dot)
-- Production recipes are hardcoded in StationProductionConfig
-- StationStorage has no per-resource capacity limit
-- Demand thresholds are hardcoded constants
-- Trade scoring is simple (no multi-hop, no competing trader avoidance)
-- Single trader — trade network would benefit from multiple traders
+- All previous technical debt items remain
+- JsonUtility does not support Dictionary — orbit/spin are separate nested objects
+- JsonUtility does not support null reference types — missing orbit/spin fields default to type defaults
+- JSON validation warnings are logged but do not prevent loading
+- No JSON schema version field for future migration
+
+------------------------------------------------------------------------
+
+## Star System Loading Pipelines
+
+### Pipeline 1: ScriptableObject (existing, unchanged)
+```
+StarSystemDefinition (ScriptableObject)
+    → StarSystemLoader.Load()
+    → StarSystemBuildData
+    → StarSystemBuilder.Build()
+    → WorldRegistry + StarSystem
+```
+
+### Pipeline 2: External JSON (NEW)
+```
+JSON file (TextAsset or file path)
+    → JsonStarSystemImporter.LoadFromTextAsset() / LoadFromFile() / LoadFromJson()
+    → StarSystemJson (DTO)
+    → StarSystemJsonValidator.Validate()
+    → ConvertToBuildData() → StarSystemBuildData
+    → StarSystemBuilder.Build()
+    → WorldRegistry + StarSystem
+```
+
+### Coordinator fallback chain
+```
+externalSystemFile (TextAsset) assigned?
+    → YES: JsonStarSystemImporter.LoadFromTextAsset()
+        → Success: use result
+        → Fail: log errors, fall through ↓
+starSystemDefinition (ScriptableObject) assigned?
+    → YES: StarSystemLoader.Load()
+        → Success: use result
+        → Fail: fall through ↓
+SampleStarSystemFactory.Create() (built-in fallback)
+```
 
 ------------------------------------------------------------------------
 
 ## Next Recommended Development Phase
 
-**Option A: Player Trading UI** — buy/sell interface when player ship is docked. First player interaction with economy.
+**Option A: Player Trading UI** — buy/sell interface when player ship is docked.
 
-**Option B: More Ships / Civilian Traffic** — more trader ships to see the trade network busy with visible traffic.
+**Option B: More Ships / Civilian Traffic** — more trader ships for visible trade network.
 
-**Option C: Storage Capacity Limits** — per-resource caps create real scarcity and trade pressure.
+**Option C: JSON Editor Tool** — in-editor preview and validation of JSON star system files.
 
-**Option D: Trader Competition** — traders avoid picking the same routes, distribute across the network.
+**Option D: Prices & Money** — currency, station buy/sell prices based on demand/surplus.
 
-**Option E: Prices & Money** — add currency, station buy/sell prices based on demand/surplus.
+**Option E: Save/Load Foundation** — serialize WorldRegistry state to JSON, reload.
 
-Recommendation: **Option B or A** — more traders make the self-organizing network visibly alive; player trading UI closes the first gameplay loop.
+Recommendation: **Option A or B** — player trading UI closes the first gameplay loop; more traders make the network visibly alive.

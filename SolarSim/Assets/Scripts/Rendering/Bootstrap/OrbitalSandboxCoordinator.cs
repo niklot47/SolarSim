@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 using SpaceSim.Data.Definitions;
+using SpaceSim.Data.Import;
 using SpaceSim.Debug;
 using SpaceSim.Simulation.Core;
 using SpaceSim.Simulation.Docking;
@@ -33,6 +34,9 @@ namespace SpaceSim.Rendering.Bootstrap
         [Header("Data")]
         [Tooltip("Assign a StarSystemDefinition asset. If empty, uses built-in sample system.")]
         [SerializeField] private StarSystemDefinition starSystemDefinition;
+
+        [Tooltip("Assign a JSON TextAsset for external system import. Takes priority over StarSystemDefinition if set.")]
+        [SerializeField] private TextAsset externalSystemFile;
 
         [Header("NPC Scheduling")]
         [Min(0.1f)]
@@ -367,19 +371,71 @@ namespace SpaceSim.Rendering.Bootstrap
             if (_listPanel != null) _listPanel.Refresh();
         }
 
+        /// <summary>
+        /// Load star system with fallback chain:
+        /// 1. External JSON file (if externalSystemFile is assigned)
+        /// 2. StarSystemDefinition ScriptableObject (if assigned)
+        /// 3. Built-in sample system (SampleStarSystemFactory)
+        /// </summary>
         private StarSystem LoadStarSystem()
         {
+            // Priority 1: External JSON file.
+            if (externalSystemFile != null)
+            {
+                var result = JsonStarSystemImporter.LoadFromTextAsset(externalSystemFile, _registry);
+
+                if (result.Success)
+                {
+                    UnityEngine.Debug.Log($"[SystemLoader] {result.Message}");
+                    GameDebug.Log(DebugCategory.SIM, result.Message, source: "SystemLoader");
+
+                    // Log validation warnings if any.
+                    if (result.Validation != null)
+                    {
+                        foreach (var warning in result.Validation.Warnings)
+                        {
+                            UnityEngine.Debug.LogWarning($"[SystemLoader] Warning: {warning}");
+                            GameDebug.LogWarning(DebugCategory.SIM, $"JSON warning: {warning}", source: "SystemLoader");
+                        }
+                    }
+
+                    return result.System;
+                }
+
+                // JSON import failed — log errors and fall through.
+                UnityEngine.Debug.LogWarning($"[SystemLoader] External JSON import failed: {result.Message}");
+                GameDebug.LogWarning(DebugCategory.SIM,
+                    $"External JSON import failed: {result.Message}", source: "SystemLoader");
+
+                if (result.Validation != null)
+                {
+                    foreach (var error in result.Validation.Errors)
+                    {
+                        UnityEngine.Debug.LogError($"[SystemLoader] Validation error: {error}");
+                        GameDebug.LogError(DebugCategory.SIM, $"JSON validation: {error}", source: "SystemLoader");
+                    }
+                }
+
+                UnityEngine.Debug.LogWarning("[SystemLoader] Falling back to ScriptableObject or sample.");
+            }
+
+            // Priority 2: ScriptableObject asset.
             if (starSystemDefinition != null)
             {
                 var system = StarSystemLoader.Load(starSystemDefinition, _registry);
                 if (system != null)
                 {
-                    UnityEngine.Debug.Log($"[OrbitalSandboxCoordinator] Loaded from asset: {starSystemDefinition.DisplayName}");
+                    string msg = $"Loaded from asset: {starSystemDefinition.DisplayName}";
+                    UnityEngine.Debug.Log($"[SystemLoader] {msg}");
+                    GameDebug.Log(DebugCategory.SIM, msg, source: "SystemLoader");
                     return system;
                 }
-                UnityEngine.Debug.LogWarning("[OrbitalSandboxCoordinator] Asset load failed. Falling back to sample.");
+                UnityEngine.Debug.LogWarning("[SystemLoader] Asset load failed. Falling back to sample.");
             }
-            UnityEngine.Debug.Log("[OrbitalSandboxCoordinator] Using built-in sample star system.");
+
+            // Priority 3: Built-in sample.
+            UnityEngine.Debug.Log("[SystemLoader] Using built-in sample star system.");
+            GameDebug.Log(DebugCategory.SIM, "Using built-in sample star system.", source: "SystemLoader");
             return SampleStarSystemFactory.Create(_registry);
         }
 

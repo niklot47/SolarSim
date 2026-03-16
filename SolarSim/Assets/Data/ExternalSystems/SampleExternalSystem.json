@@ -1,0 +1,188 @@
+{
+  "systemName": "Sol System (External)",
+  "systemKey": "sol_external",
+  "localizationKey": "system.sol_ext",
+
+  "bodies": [
+    {
+      "key": "sol",
+      "name": "Sol",
+      "localizationKey": "body.sol",
+      "type": "Star",
+      "radius": 1.0,
+      "isSelectable": true,
+      "hasSurface": false,
+      "soi": 1000.0,
+      "spin": {
+        "rotationPeriod": 600.0
+      }
+    },
+    {
+      "key": "terra",
+      "name": "Terra",
+      "localizationKey": "body.terra",
+      "type": "Planet",
+      "parent": "sol",
+      "radius": 0.3,
+      "isSelectable": true,
+      "hasSurface": true,
+      "soi": 60.0,
+      "orbit": {
+        "semiMajorAxis": 150.0,
+        "period": 120.0,
+        "eccentricity": 0.0,
+        "meanAnomalyAtEpochDeg": 0.0
+      },
+      "spin": {
+        "rotationPeriod": 30.0
+      }
+    },
+    {
+      "key": "ares",
+      "name": "Ares",
+      "localizationKey": "body.ares",
+      "type": "Planet",
+      "parent": "sol",
+      "radius": 0.2,
+      "isSelectable": true,
+      "hasSurface": true,
+      "soi": 40.0,
+      "orbit": {
+        "semiMajorAxis": 275.0,
+        "period": 240.0,
+        "meanAnomalyAtEpochDeg": 90.0
+      },
+      "spin": {
+        "rotationPeriod": 25.0
+      }
+    },
+    {
+      "key": "venus",
+      "name": "Venus",
+      "localizationKey": "body.venus",
+      "type": "Planet",
+      "parent": "sol",
+      "radius": 0.16,
+      "isSelectable": true,
+      "hasSurface": false,
+      "soi": 30.0,
+      "orbit": {
+        "semiMajorAxis": 75.0,
+        "period": 80.0,
+        "meanAnomalyAtEpochDeg": 45.0
+      },
+      "spin": {
+        "rotationPeriod": 20.0
+      }
+    },
+    {
+      "key": "luna",
+      "name": "Luna",
+      "localizationKey": "body.luna",
+      "type": "Moon",
+      "parent": "terra",
+      "radius": 0.08,
+      "isSelectable": true,
+      "hasSurface": true,
+      "soi": 8.0,
+      "orbit": {
+        "semiMajorAxis": 25.0,
+        "period": 20.0,
+        "meanAnomalyAtEpochDeg": 45.0
+      },
+      "spin": {
+        "rotationPeriod": 20.0
+      }
+    }
+  ],
+
+  "stations": [
+    {
+      "key": "station_orbita1",
+      "name": "Станция «Орбита-1»",
+      "localizationKey": "station.orbita1",
+      "kind": "Orbital",
+      "parentBody": "terra",
+      "radius": 0.06,
+      "orbitalRadius": 8.0,
+      "orbitalPeriod": 18.0,
+      "startAngleDeg": 60.0,
+      "rotationPeriod": 40.0,
+      "dockingPortCount": 3
+    },
+    {
+      "key": "station_terra1",
+      "name": "База «Терра-1»",
+      "localizationKey": "station.terra1",
+      "kind": "Surface",
+      "parentBody": "terra",
+      "radius": 0.04,
+      "surfaceLatitudeDeg": 30.0,
+      "surfaceLongitudeDeg": 45.0,
+      "dockingPortCount": 2
+    },
+    {
+      "key": "station_phobos",
+      "name": "Станция «Фобос»",
+      "localizationKey": "station.phobos",
+      "kind": "Orbital",
+      "parentBody": "ares",
+      "radius": 0.05,
+      "orbitalRadius": 6.0,
+      "orbitalPeriod": 14.0,
+      "startAngleDeg": 30.0,
+      "rotationPeriod": 30.0,
+      "dockingPortCount": 2
+    },
+    {
+      "key": "station_ares1",
+      "name": "База «Арес-1»",
+      "localizationKey": "station.ares1",
+      "kind": "Surface",
+      "parentBody": "ares",
+      "radius": 0.035,
+      "surfaceLatitudeDeg": -15.0,
+      "surfaceLongitudeDeg": 120.0,
+      "dockingPortCount": 2
+    }
+  ],
+
+  "ships": [
+    {
+      "key": "ship_aurora",
+      "name": "Корвет «Аврора»",
+      "localizationKey": "ship.aurora",
+      "role": "Player",
+      "shipClass": "Corvette",
+      "parentBody": "terra",
+      "radius": 0.03,
+      "orbitalRadius": 3.0,
+      "orbitalPeriod": 12.0,
+      "startAngleDeg": 0.0
+    },
+    {
+      "key": "ship_cargo7",
+      "name": "Транспорт «Карго-7»",
+      "localizationKey": "ship.cargo7",
+      "role": "Trader",
+      "shipClass": "Freighter",
+      "parentBody": "terra",
+      "radius": 0.024,
+      "orbitalRadius": 4.0,
+      "orbitalPeriod": 15.0,
+      "startAngleDeg": 120.0
+    },
+    {
+      "key": "ship_strazh3",
+      "name": "Патруль «Страж-3»",
+      "localizationKey": "ship.strazh3",
+      "role": "Patrol",
+      "shipClass": "Interceptor",
+      "parentBody": "ares",
+      "radius": 0.024,
+      "orbitalRadius": 3.0,
+      "orbitalPeriod": 10.0,
+      "startAngleDeg": 200.0
+    }
+  ]
+}
