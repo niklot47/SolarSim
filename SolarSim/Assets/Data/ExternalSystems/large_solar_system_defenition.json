@@ -92,6 +92,86 @@
       "spin": {
         "rotationPeriod": 20.0
       }
+    },
+    {
+      "key": "saturn",
+      "name": "Saturn",
+      "localizationKey": "body.saturn",
+      "type": "Planet",
+      "parent": "sol",
+      "radius": 0.5,
+      "isSelectable": true,
+      "hasSurface": false,
+      "soi": 120.0,
+      "orbit": {
+        "semiMajorAxis": 600.0,
+        "period": 800.0,
+        "eccentricity": 0.056,
+        "meanAnomalyAtEpochDeg": 10.0
+      },
+      "spin": {
+        "rotationPeriod": 40.0
+      }
+    },
+    {
+      "key": "uranus",
+      "name": "Uranus",
+      "localizationKey": "body.uranus",
+      "type": "Planet",
+      "parent": "sol",
+      "radius": 0.42,
+      "isSelectable": true,
+      "hasSurface": false,
+      "soi": 150.0,
+      "orbit": {
+        "semiMajorAxis": 900.0,
+        "period": 1400.0,
+        "eccentricity": 0.046,
+        "meanAnomalyAtEpochDeg": 120.0
+      },
+      "spin": {
+        "rotationPeriod": 38.0
+      }
+    },
+    {
+      "key": "neptune",
+      "name": "Neptune",
+      "localizationKey": "body.neptune",
+      "type": "Planet",
+      "parent": "sol",
+      "radius": 0.41,
+      "isSelectable": true,
+      "hasSurface": false,
+      "soi": 180.0,
+      "orbit": {
+        "semiMajorAxis": 1200.0,
+        "period": 2200.0,
+        "eccentricity": 0.011,
+        "meanAnomalyAtEpochDeg": 200.0
+      },
+      "spin": {
+        "rotationPeriod": 36.0
+      }
+    },
+    {
+      "key": "pluto",
+      "name": "Pluto",
+      "localizationKey": "body.pluto",
+      "type": "Planet",
+      "parent": "sol",
+      "radius": 0.1,
+      "isSelectable": true,
+      "hasSurface": true,
+      "soi": 60.0,
+      "orbit": {
+        "semiMajorAxis": 1600.0,
+        "period": 4000.0,
+        "eccentricity": 0.25,
+        "meanAnomalyAtEpochDeg": 300.0
+      },
+      "spin": {
+        "rotationPeriod": 20.0
+      }
     }
   ],
   "stations": [
