@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 15 — Elliptical Orbit Foundation.
+Last updated after: Step 16 — Adaptive Orbit Line Rendering (OrbitSampler, curvature-based subdivision).
 
 ------------------------------------------------------------------------
 
@@ -29,30 +29,33 @@ Last updated after: Step 15 — Elliptical Orbit Foundation.
 - **WorldRegistry** — central entity lookup
 - **OrbitalPositionCalculator** — full Keplerian orbit position calculation (elliptical + inclined + circular), surface position from lat/lon
 - **KeplerSolver** — Newton-Raphson solver for Kepler's equation M = E - e*sin(E), 8 iterations max, O(0) allocations
-- **OrbitalMapRenderer** — scene visuals, elliptical orbit lines via CalculateOrbitPoint(), delegates position resolution to WorldPositionResolver
+- **OrbitSampler** — **NEW** Simulation-side orbit sampling with adaptive subdivision and uniform fallback
+- **OrbitalMapRenderer** — scene visuals, orbit lines via OrbitSampler (adaptive or uniform mode), delegates position resolution to WorldPositionResolver
 - **CelestialBodyView** — visual binding with role-based ship colors, station kind colors, station scale ×⅓
 
-### Elliptical Orbit Foundation (NEW)
+### Adaptive Orbit Line Rendering (NEW)
+- **OrbitSampler** (Simulation layer) — orbit geometry sampling with two modes
+  - `SampleAdaptive(orbit, tolerance, maxDepth, seedSegments)` — curvature-based subdivision
+    - Starts with evenly-spaced seed points (default 16)
+    - Recursively subdivides segments where chord-to-curve deviation exceeds tolerance
+    - Circular orbits: ~16 points (no subdivision needed, chord error ≈ 0)
+    - Eccentric orbits: more points near periapsis where curvature is highest
+    - Parameters: tolerance (default 0.05 Mm), maxDepth (default 7), seedSegments (default 16)
+    - Hard cap: 2048 total points maximum
+  - `SampleUniform(orbit, segmentCount)` — fixed-count fallback for debugging
+  - `EvaluateAtMeanAnomaly(orbit, M)` — single point evaluation
+  - All methods delegate to `OrbitalPositionCalculator.CalculateOrbitPoint()` — zero math duplication
+- **OrbitalMapRenderer** — orbit line points computed via OrbitSampler
+  - Inspector toggle: `adaptiveOrbitLines` (default: true)
+  - Adaptive params: `orbitLineTolerance` (0.05), `orbitLineMaxDepth` (7), `orbitLineSeedSegments` (16)
+  - Uniform fallback: `orbitLineFixedSegments` (128)
+  - Orbit lines generated once on creation or orbit parameter change — NOT every frame
+  - No separate circle-only or approximate ellipse logic in Rendering layer
+
+### Elliptical Orbit Foundation
 - **KeplerSolver** — pure C# Newton-Raphson solver in Simulation layer
-  - Solves M = E - e*sin(E) for eccentric anomaly E
-  - Initial guess: E₀ = M + e*sin(M)
-  - 8 iterations max, convergence threshold 1e-10 radians
-  - Zero allocations, no LINQ
-  - Circular orbit shortcut: e < 1e-12 → E = M (no iteration)
-- **OrbitalPositionCalculator** — upgraded from circular-only to full Keplerian
-  - Fast path: circular flat orbits (e ≈ 0, i ≈ 0) — identical to previous implementation
-  - General path: elliptical and/or inclined orbits
-  - Step 1: Solve Kepler's equation for eccentric anomaly E
-  - Step 2: Compute orbital plane position: x = a(cosE - e), z = a√(1-e²)sinE
-  - Step 3: Rotate by ω (argument of periapsis), i (inclination), Ω (longitude of ascending node)
-  - New method: `CalculateOrbitPoint(orbit, meanAnomalyRad)` for orbit line rendering
-  - All existing callers unchanged (CalculatePosition, CalculateAbsolutePosition, GetMeanAnomalyRad, CalculateSurfacePosition)
-- **OrbitalMapRenderer** — orbit lines now use CalculateOrbitPoint() instead of hardcoded circles
-  - Correctly renders elliptical and inclined orbits
-  - SceneScaleConfig DistanceScale applied to all orbit line points
-  - No change to position update logic (still delegates to WorldPositionResolver)
+- **OrbitalPositionCalculator** — full Keplerian: elliptical, inclined, and circular
 - **Backward compatibility**: all existing circular orbits (e=0, i=0) produce identical results
-- **No changes** to: OrbitDefinition, WorldPositionResolver, ShipMovementSystem, DockingSystem, NPCShipScheduler, StarSystemBuilder, any UI or Data layer files
 
 ### World Position Resolution
 - **WorldPositionResolver** — single source of truth for body world positions (Simulation layer, pure C#)
@@ -61,27 +64,23 @@ Last updated after: Step 15 — Elliptical Orbit Foundation.
 - **CelestialBodyDefinition / ShipDefinition / StationDefinition** — serializable Inspector-authored data
 - **StarSystemDefinition** — ScriptableObject with body list + ship list + station list
 - **StarSystemBuilder** — pure C# builder (5 phases: bodies, parents, register, ships, stations)
-- **StarSystemLoader** — Unity-side adapter, converts ScriptableObject definitions to build data
+- **StarSystemLoader** — Unity-side adapter
 - **SampleSystemAssetCreator** — editor menu to create sample asset
 - **SampleStarSystemFactory** — hardcoded fallback
 
 ### External Star System Import
-- **StarSystemJsonDto** — pure DTO classes
-- **StarSystemJsonValidator** — validates JSON structure before conversion
-- **JsonStarSystemImporter** — adapter: JSON → StarSystemBuildData → StarSystemBuilder
+- **StarSystemJsonDto**, **StarSystemJsonValidator**, **JsonStarSystemImporter**
 - **OrbitalSandboxCoordinator** — fallback chain: External JSON → StarSystemDefinition → SampleStarSystemFactory
 
 ### Stations Foundation
 - Two station kinds: **Orbital** and **Surface**
 - **StationInfo** — station metadata including Demand field
-- Sample stations: Орбита-1, Терра-1, Фобос, Арес-1
 
 ### Docking Foundation
 - **DockingPort**, **DockingInfo**, **DockingSystem** — unchanged
 
 ### Economy + Cargo Foundation
 - **ResourceType**, **StationStorage**, **ShipCargo**, **CargoTransferService** — unchanged
-- **StationEconomyConfig**, **EconomyInitializer** — unchanged
 
 ### Station Production Foundation
 - **StationProductionRecipe**, **StationProductionState**, **StationProductionConfig**, **StationProductionSystem** — unchanged
@@ -91,17 +90,8 @@ Last updated after: Step 15 — Elliptical Orbit Foundation.
 - **StationDemandEvaluator**, **TradeOpportunityResolver** — unchanged
 - **NPCShipScheduler** — demand-driven trader routing — unchanged
 
-### Selection and Interaction
+### Selection, UI, Camera, Labels, Ships, Movement, SOI, Bootstrap
 - Unchanged
-
-### UI Panels
-- Unchanged
-
-### Camera and Labels
-- Unchanged
-
-### Ships, Ship Movement, NPC Scheduling, SOI, Bootstrap
-- Unchanged (except OrbitalMapRenderer orbit line rendering)
 
 ------------------------------------------------------------------------
 
@@ -128,17 +118,11 @@ Unchanged.
 ### JSON deserialization uses Unity JsonUtility
 Unchanged.
 
-### JSON import lives in Data layer
-Unchanged.
-
-### JSON schema is not versioned
-Unchanged.
-
 ### Ship orbits remain circular
-ShipMovementSystem assigns circular orbits (e=0) on arrival. Ships do not use elliptical orbits yet. This is intentional — elliptical orbit foundation affects celestial bodies only. Ship orbit assignment can be extended later.
+ShipMovementSystem assigns circular orbits (e=0) on arrival.
 
-### Orbit line segments fixed at 64
-Adequate for visual quality at typical zoom levels. For very high eccentricity orbits near periapsis, 64 segments may show slight angular artifacts. Increase if needed.
+### Orbit line points are generated once per orbit creation
+Not regenerated every frame. If orbit parameters change dynamically at runtime (not currently the case for celestial bodies), orbit lines would need explicit regeneration.
 
 ------------------------------------------------------------------------
 
@@ -147,76 +131,94 @@ Adequate for visual quality at typical zoom levels. For very high eccentricity o
 | System | Notes |
 |---|---|
 | JSON schema versioning | Version field for migration support |
-| JSON editor tool | In-editor preview/validation of JSON files |
-| Multi-system support | Loading multiple star systems simultaneously |
-| Prices / Money | Currency, buy/sell prices, supply/demand |
-| Player trading UI | Buy/sell interface for player at docked station |
-| Complex factories | Multi-input, multi-output production |
-| Economic AI | Multi-hop routes, profit maximization |
+| JSON editor tool | In-editor preview/validation |
+| Multi-system support | Multiple star systems |
+| Prices / Money | Currency, buy/sell prices |
+| Player trading UI | Buy/sell interface |
+| Complex factories | Multi-input, multi-output |
+| Economic AI | Multi-hop routes, profit |
 | Contracts | Task definition, assignment |
 | Factions | Entities, relationships, territory |
-| Advanced navigation | Pathfinding, waypoints, SOI-aware routing |
+| Advanced navigation | Pathfinding, SOI-aware routing |
 | Orbital transfers | Hohmann, delta-v, patched conics |
 | Combat | Weapons, damage |
 | Ship modules | Equipment slots |
 | Save/Load | WorldRegistry serialization |
 | Procedural planets | PPG Lite integration |
 | Inclined orbit visualization | SOI wireframe, orbit plane indicators |
+| True anomaly spacing | Non-uniform seed distribution for high-e orbits |
 
 ------------------------------------------------------------------------
 
 ## Architecture Health Notes
 
 ### Clean boundaries maintained
-- KeplerSolver is pure C# in Simulation layer — zero Unity dependency
-- OrbitalPositionCalculator remains pure C# in Simulation layer — no API changes
-- OrbitalMapRenderer only calls OrbitalPositionCalculator.CalculateOrbitPoint() for orbit lines
+- OrbitSampler is pure C# in Simulation layer — delegates all math to OrbitalPositionCalculator
+- OrbitalMapRenderer calls OrbitSampler — contains zero orbital math
+- KeplerSolver, OrbitalPositionCalculator remain pure C# — no changes
 - No changes to World layer, UI layer, Data layer, Debug layer
-- ShipMovementSystem, DockingSystem, NPCShipScheduler — NOT modified
-- WorldPositionResolver — NOT modified, calls OrbitalPositionCalculator.CalculatePosition() which now handles elliptical orbits transparently
-- All existing callers of OrbitalPositionCalculator work without modification
+- ShipMovementSystem, DockingSystem, NPCShipScheduler, WorldPositionResolver — NOT modified
 
 ### Known technical debt
 - All previous technical debt items remain
-- Ship orbits assigned by ShipMovementSystem/DockingSystem are always circular (e=0)
-- Orbit line segments (64) may be insufficient for very high eccentricity orbits
-- No orbit line rendering for inclined orbits in 2D minimap (if added later)
+- Ship orbits always circular (e=0)
+- Orbit line regeneration for ships (EnsureOrbitLine) runs when ship state changes — could cache more aggressively
 
 ------------------------------------------------------------------------
 
-## Elliptical Orbit Math Reference
+## Adaptive Orbit Line Algorithm Reference
 
-### Kepler's Equation
+### Subdivision logic
 ```
-M = E - e * sin(E)
-```
-- M = mean anomaly (linear time progression)
-- E = eccentric anomaly (geometric angle on auxiliary circle)
-- e = eccentricity
-
-### Newton-Raphson Solution
-```
-E_{n+1} = E_n - (E_n - e*sin(E_n) - M) / (1 - e*cos(E_n))
-```
-Initial guess: E₀ = M + e*sin(M)
-
-### Position in Orbital Plane
-```
-r = a * (1 - e * cos(E))
-x_orbit = a * (cos(E) - e)
-z_orbit = a * sqrt(1 - e²) * sin(E)
+For each seed segment [t0, t1]:
+    p0 = CalculateOrbitPoint(t0)
+    p1 = CalculateOrbitPoint(t1)
+    tMid = (t0 + t1) / 2
+    pMid = CalculateOrbitPoint(tMid)       // true curve point
+    pChord = (p0 + p1) / 2                 // linear midpoint
+    error = distance(pMid, pChord)
+    if error > tolerance:
+        subdivide [t0, tMid] and [tMid, t1] recursively
+    else:
+        accept segment as-is
 ```
 
-### 3D Rotation Sequence (Y-up convention)
-1. Rotate by ω (argument of periapsis) around Y in orbital plane
-2. Rotate by i (inclination) around X to tilt the plane
-3. Rotate by Ω (longitude of ascending node) around Y
+### Behavior by orbit type
+- **Circular (e=0)**: chord error ≈ 0 for 16 seed segments → ~16 points total
+- **Low eccentricity (e<0.1)**: minimal subdivision → ~20–30 points
+- **Medium eccentricity (e~0.5)**: subdivision near periapsis → ~60–100 points
+- **High eccentricity (e>0.8)**: heavy subdivision near periapsis → ~150–300 points
 
-### Backward Compatibility
-When e = 0 and i = 0:
-- E = M (no Kepler solving)
-- x = a * cos(M), z = a * sin(M) — identical to original circular calculation
-- No rotation applied
+### Safety limits
+- Max total points: 2048
+- Max recursion depth: 7 (configurable)
+- Tolerance floor: 1e-6 Mm
+
+------------------------------------------------------------------------
+
+## Orbit Line Rendering Pipeline
+
+```
+OrbitDefinition (a, e, i, Ω, ω)
+    ↓
+OrbitalMapRenderer calls OrbitSampler.SampleAdaptive(orbit, tolerance, maxDepth, seeds)
+    ↓
+OrbitSampler: generate seed points → recursive subdivision using CalculateOrbitPoint()
+    ↓
+List<SimVec3> parent-relative positions (variable count, denser at high curvature)
+    ↓
+OrbitalMapRenderer applies SceneScaleConfig.DistanceScale
+    ↓
+LineRenderer positions (useWorldSpace = false, loop = true)
+    ↓
+LineRenderer transform.position = parent world position (updated each tick)
+```
+
+Same `OrbitalPositionCalculator.CalculateOrbitPoint()` is used by:
+- OrbitSampler (orbit line geometry)
+- OrbitalPositionCalculator.CalculatePosition() (runtime body positions)
+
+Bodies move exactly on the rendered orbit line.
 
 ------------------------------------------------------------------------
 
@@ -226,10 +228,10 @@ When e = 0 and i = 0:
 
 **Option B: More Ships / Civilian Traffic** — more trader ships for visible trade network.
 
-**Option C: Test Elliptical Orbits** — add eccentricity/inclination to sample system bodies to visually verify.
+**Option C: Test Elliptical Orbits** — add eccentricity/inclination to sample system bodies.
 
-**Option D: Prices & Money** — currency, station buy/sell prices based on demand/surplus.
+**Option D: Prices & Money** — currency, station buy/sell prices.
 
-**Option E: Save/Load Foundation** — serialize WorldRegistry state to JSON, reload.
+**Option E: Save/Load Foundation** — serialize WorldRegistry state.
 
-Recommendation: **Option C** (quick visual verification) then **Option A or B**.
+Recommendation: **Option C** then **Option A or B**.

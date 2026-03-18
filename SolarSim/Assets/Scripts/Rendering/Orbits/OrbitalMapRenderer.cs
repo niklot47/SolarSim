@@ -35,6 +35,26 @@ namespace SpaceSim.Rendering.Orbits
         [Range(1f, 6f)]
         [SerializeField] private float orbitLineCurveSigma = 2.5f;
 
+        [Header("Orbit Line Quality")]
+        [Tooltip("Use adaptive subdivision (curvature-based). If false, uses fixed uniform segments.")]
+        [SerializeField] private bool adaptiveOrbitLines = true;
+
+        [Tooltip("Adaptive mode: max allowed chord-to-curve deviation in world units (Mm). Lower = smoother.")]
+        [Range(0.001f, 1.0f)]
+        [SerializeField] private float orbitLineTolerance = 0.05f;
+
+        [Tooltip("Adaptive mode: max recursion depth per seed segment. Higher = finer detail.")]
+        [Range(1, 10)]
+        [SerializeField] private int orbitLineMaxDepth = 7;
+
+        [Tooltip("Adaptive mode: initial evenly-spaced seed segments before subdivision.")]
+        [Range(4, 64)]
+        [SerializeField] private int orbitLineSeedSegments = 16;
+
+        [Tooltip("Uniform fallback mode: fixed number of orbit line segments.")]
+        [Range(32, 512)]
+        [SerializeField] private int orbitLineFixedSegments = 128;
+
         private WorldRegistry _registry;
         private StarSystem _system;
         private SimulationClock _clock;
@@ -45,8 +65,6 @@ namespace SpaceSim.Rendering.Orbits
             new Dictionary<EntityId, Planets.CelestialBodyView>();
         private readonly Dictionary<EntityId, LineRenderer> _orbitLines =
             new Dictionary<EntityId, LineRenderer>();
-
-        private const int OrbitLineSegments = 64;
 
         private static readonly Color DefaultOrbitLineColor = new Color(1f, 1f, 1f, 0.2f);
 
@@ -183,7 +201,6 @@ namespace SpaceSim.Rendering.Orbits
             var lr = lineGo.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
             lr.loop = true;
-            lr.positionCount = OrbitLineSegments;
 
             if (orbitLineMaterial != null)
             {
@@ -218,9 +235,18 @@ namespace SpaceSim.Rendering.Orbits
         }
 
         /// <summary>
-        /// Set orbit line points using OrbitalPositionCalculator.
-        /// Supports elliptical, inclined, and circular orbits.
-        /// Points are in parent-local space (LineRenderer useWorldSpace = false).
+        /// Set orbit line points using OrbitSampler from the Simulation layer.
+        /// This is the ONLY place orbit line geometry is generated.
+        ///
+        /// OrbitSampler delegates all position evaluation to
+        /// OrbitalPositionCalculator.CalculateOrbitPoint() — the same function
+        /// used by runtime body position calculation.
+        /// This guarantees bodies move exactly on the rendered orbit line.
+        ///
+        /// Two modes:
+        ///   Adaptive (default): curvature-based subdivision, few points for circles,
+        ///     many points near periapsis of eccentric orbits.
+        ///   Uniform (fallback): fixed segment count, evenly spaced in mean anomaly.
         /// </summary>
         private void SetOrbitLinePoints(LineRenderer lr, World.ValueTypes.OrbitDefinition orbit)
         {
@@ -228,15 +254,31 @@ namespace SpaceSim.Rendering.Orbits
 
             float distScale = scaleConfig != null ? scaleConfig.DistanceScale : 1f;
 
-            for (int i = 0; i < OrbitLineSegments; i++)
-            {
-                double meanAnomaly = (double)i / OrbitLineSegments * 2.0 * System.Math.PI;
-                SimVec3 localPos = OrbitalPositionCalculator.CalculateOrbitPoint(orbit, meanAnomaly);
+            // Get orbit sample points from Simulation layer.
+            List<SimVec3> points;
 
+            if (adaptiveOrbitLines)
+            {
+                points = OrbitSampler.SampleAdaptive(
+                    orbit,
+                    orbitLineTolerance,
+                    orbitLineMaxDepth,
+                    orbitLineSeedSegments);
+            }
+            else
+            {
+                points = OrbitSampler.SampleUniform(orbit, orbitLineFixedSegments);
+            }
+
+            // Apply to LineRenderer.
+            lr.positionCount = points.Count;
+
+            for (int i = 0; i < points.Count; i++)
+            {
                 lr.SetPosition(i, new Vector3(
-                    (float)(localPos.X * distScale),
-                    (float)(localPos.Y * distScale),
-                    (float)(localPos.Z * distScale)));
+                    (float)(points[i].X * distScale),
+                    (float)(points[i].Y * distScale),
+                    (float)(points[i].Z * distScale)));
             }
         }
 

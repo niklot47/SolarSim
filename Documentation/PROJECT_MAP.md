@@ -27,7 +27,8 @@ Key files:
 - `Scripts/Simulation/Core/StarSystemBuilder.cs` — builds runtime entities from pure build data
 - `Scripts/Simulation/Core/WorldPositionResolver.cs` — single source of truth for body world positions
 - `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — **full Keplerian orbit position**: elliptical, inclined, and circular; surface position from lat/lon
-- `Scripts/Simulation/Orbits/KeplerSolver.cs` — **NEW** Newton-Raphson solver for Kepler's equation
+- `Scripts/Simulation/Orbits/KeplerSolver.cs` — Newton-Raphson solver for Kepler's equation
+- `Scripts/Simulation/Orbits/OrbitSampler.cs` — **NEW** adaptive orbit geometry sampling; SampleAdaptive(), SampleUniform(), EvaluateAtMeanAnomaly(); delegates to OrbitalPositionCalculator
 - `Scripts/Simulation/Ships/ShipMovementSystem.cs` — anchored travel with Global/LocalParent frame selection
 - `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing via TradeOpportunityResolver
 - `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution
@@ -70,7 +71,7 @@ Key files:
 - `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point
 - `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services, external JSON import support
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions to build data
-- `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — scene visuals, **elliptical orbit lines** via CalculateOrbitPoint()
+- `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — scene visuals, orbit lines via **OrbitSampler** (adaptive subdivision or uniform fallback)
 - `Scripts/Rendering/Planets/CelestialBodyView.cs` — body visual representation
 - `Scripts/Rendering/Cameras/OrbitalCameraController.cs` — camera controls
 - `Scripts/Rendering/Selection/SelectionBridge.cs` — selection ring + highlight
@@ -131,21 +132,25 @@ Orbital plane: x = a(cosE - e), z = a√(1-e²)sinE
 WorldPositionResolver adds parent world position
 ```
 
-### Orbit Line Rendering (per orbit line creation/update)
+### Orbit Line Rendering (per orbit line creation)
 ```
 OrbitDefinition
     ↓
-OrbitalPositionCalculator.CalculateOrbitPoint(orbit, meanAnomalyRad)
-    for 64 evenly-spaced mean anomaly values [0, 2π)
+OrbitSampler.SampleAdaptive(orbit, tolerance, maxDepth, seedSegments)
+    - generates seed points at evenly spaced mean anomaly
+    - recursively subdivides where chord error > tolerance
+    - calls OrbitalPositionCalculator.CalculateOrbitPoint() for every sample
     ↓
-Local positions in parent-relative space
+List<SimVec3> parent-relative positions (adaptive count)
     ↓
-SceneScaleConfig.DistanceScale applied
+SceneScaleConfig.DistanceScale applied by OrbitalMapRenderer
     ↓
-LineRenderer positions (useWorldSpace = false)
+LineRenderer positions (useWorldSpace = false, loop = true)
     ↓
 LineRenderer transform.position = parent world position (updated each tick)
 ```
+
+Both pipelines use the same `OrbitalPositionCalculator.CalculateOrbitPoint()` internally.
 
 ------------------------------------------------------------------------
 
