@@ -14,6 +14,9 @@ namespace SpaceSim.UI.Localization
         {
             // Object list panel.
             ["panel.object_list.title"] = "\u041e\u0431\u044a\u0435\u043a\u0442\u044b",
+            ["panel.object_list.ships"] = "\u041a\u043e\u0440\u0430\u0431\u043b\u0438",
+            ["panel.object_list.collapse_all"] = "\u25B6\u25B6",
+            ["panel.object_list.expand_all"] = "\u25BC\u25BC",
 
             // Details panel.
             ["panel.details.title"] = "\u0421\u0432\u043e\u0439\u0441\u0442\u0432\u0430",
@@ -31,7 +34,7 @@ namespace SpaceSim.UI.Localization
             ["panel.details.station_kind"] = "\u0422\u0438\u043f \u0441\u0442.",
             ["panel.details.attachment"] = "\u041a\u0440\u0435\u043f\u043b\u0435\u043d\u0438\u0435",
             ["panel.details.soi_radius"] = "\u0420\u0430\u0434\u0438\u0443\u0441 SOI",
-            ["panel.details.more_btn"] = "\u0414\u0435\u0442\u0430\u043b\u044c\u043d\u0435\u0439",
+            ["panel.details.more_btn"] = "\u0414\u0435\u0442\u0430\u043b\u044c\u043d\u0435\u0435",
 
             // Docking details.
             ["panel.details.docked_at"] = "\u041f\u0440\u0438\u0441\u0442\u044b\u043a.",

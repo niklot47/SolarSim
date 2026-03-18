@@ -148,7 +148,7 @@ namespace SpaceSim.Rendering.Bootstrap
             clickHandler.Initialize(_selectionService, uiDocument);
 
             var labelController = gameObject.AddComponent<BodyLabelController>();
-            labelController.Initialize(_registry, _currentSystem, mapRenderer, cameraController);
+            labelController.Initialize(_registry, _currentSystem, mapRenderer, cameraController, uiDocument);
 
             SetupUIPanels(clock, labelController);
 

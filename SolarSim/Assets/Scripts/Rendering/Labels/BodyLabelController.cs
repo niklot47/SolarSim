@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UIElements;
 using SpaceSim.World.Entities;
 using SpaceSim.World.Systems;
 using SpaceSim.Rendering.Orbits;
@@ -13,11 +14,15 @@ namespace SpaceSim.Rendering.Labels
 {
     /// <summary>
     /// Creates and manages floating name labels above celestial bodies.
-    /// Labels are screen-space GUI rendered on top of the 3D scene.
+    /// Labels are screen-space IMGUI rendered on top of the 3D scene.
     /// Visibility is controlled by camera distance thresholds.
     ///
     /// The Visible property allows external controllers (e.g. modal dialog)
     /// to temporarily hide all labels so they don't render on top of UI panels.
+    ///
+    /// Labels are clipped to the viewport rect between the two side panels.
+    /// Panel widths are read automatically from the UIDocument's resolved layout
+    /// each frame, so they adapt to any panel width changes (collapse, resize).
     /// </summary>
     public class BodyLabelController : MonoBehaviour
     {
@@ -37,6 +42,14 @@ namespace SpaceSim.Rendering.Labels
         private OrbitalCameraController _cameraController;
         private Camera _camera;
 
+        // UI Toolkit references for reading resolved panel widths.
+        private VisualElement _leftPanel;
+        private VisualElement _rightPanel;
+        // Panel body elements — when display:none, the panel is collapsed (header-only).
+        // In that case we treat the panel as taking zero horizontal space for clipping.
+        private VisualElement _leftPanelBody;
+        private VisualElement _rightPanelBody;
+
         private GUIStyle _labelStyle;
         private GUIStyle _shadowStyle;
 
@@ -55,16 +68,30 @@ namespace SpaceSim.Rendering.Labels
         }
         private List<LabelEntry> _entries = new List<LabelEntry>();
 
+        /// <summary>
+        /// Initialize the label controller.
+        /// Pass the UIDocument so panel widths are read automatically from resolved layout.
+        /// </summary>
         public void Initialize(
             WorldRegistry registry,
             StarSystem system,
             OrbitalMapRenderer mapRenderer,
-            OrbitalCameraController cameraController)
+            OrbitalCameraController cameraController,
+            UIDocument uiDocument = null)
         {
             _registry = registry;
             _system = system;
             _mapRenderer = mapRenderer;
             _cameraController = cameraController;
+
+            if (uiDocument != null)
+            {
+                var root = uiDocument.rootVisualElement;
+                _leftPanel     = root?.Q<VisualElement>("left-panel");
+                _rightPanel    = root?.Q<VisualElement>("right-panel");
+                _leftPanelBody  = root?.Q<VisualElement>("left-panel-body");
+                _rightPanelBody = root?.Q<VisualElement>("right-panel-body");
+            }
 
             BuildEntryList();
         }
@@ -85,6 +112,27 @@ namespace SpaceSim.Rendering.Labels
                     DisplayName = body.DisplayName
                 });
             }
+        }
+
+        /// <summary>
+        /// Convert a UI Toolkit point coordinate to IMGUI physical screen pixels.
+        /// </summary>
+        private float UIToScreenX(float uiX)
+        {
+            if (_leftPanel == null) return uiX;
+            float scale = _leftPanel.panel?.scaledPixelsPerPoint ?? 1f;
+            return uiX * scale;
+        }
+
+        /// <summary>
+        /// Returns true when the panel body has display:none — i.e. the panel is collapsed
+        /// to just its header bar. In this state the panel takes no useful horizontal space
+        /// for label clipping purposes.
+        /// </summary>
+        private static bool IsPanelCollapsed(VisualElement panelBody)
+        {
+            if (panelBody == null) return false;
+            return panelBody.resolvedStyle.display == DisplayStyle.None;
         }
 
         private void OnGUI()
@@ -122,6 +170,39 @@ namespace SpaceSim.Rendering.Labels
             baseShadow.a *= alpha;
             _shadowStyle.normal.textColor = baseShadow;
 
+            // Determine clip edges from actual panel positions.
+            // When a panel is collapsed (panel-body display:none), its header stays full-width
+            // but occupies only ~28px of height — no horizontal space is blocked, so we use 0.
+            float leftEdge;
+            if (_leftPanel == null || IsPanelCollapsed(_leftPanelBody))
+            {
+                leftEdge = 0f;
+            }
+            else
+            {
+                leftEdge = UIToScreenX(_leftPanel.worldBound.xMax);
+                if (float.IsNaN(leftEdge) || leftEdge < 0f) leftEdge = 0f;
+            }
+
+            float rightEdge;
+            if (_rightPanel == null || IsPanelCollapsed(_rightPanelBody))
+            {
+                rightEdge = Screen.width;
+            }
+            else
+            {
+                rightEdge = UIToScreenX(_rightPanel.worldBound.xMin);
+                if (float.IsNaN(rightEdge) || rightEdge <= 0f) rightEdge = Screen.width;
+            }
+
+            float clipX     = leftEdge;
+            float clipWidth = Mathf.Max(0f, rightEdge - leftEdge);
+            Rect clipRect   = new Rect(clipX, 0f, clipWidth, Screen.height);
+
+            // GUI.BeginClip clips rendering AND shifts coordinate origin to clipRect's top-left,
+            // so all label X positions must be offset by -clipX.
+            GUI.BeginClip(clipRect);
+
             foreach (var entry in _entries)
             {
                 var view = _mapRenderer.GetView(entry.Id);
@@ -133,22 +214,23 @@ namespace SpaceSim.Rendering.Labels
                 // Skip if behind camera.
                 if (screenPos.z < 0f) continue;
 
-                // Convert to GUI coordinates (Y is inverted).
+                // Convert to GUI coordinates (Y is inverted), shift X to clip-space.
                 float guiY = Screen.height - screenPos.y - labelOffsetPixels;
-                float guiX = screenPos.x;
+                float guiX = screenPos.x - clipX;
 
                 var content = new GUIContent(entry.DisplayName);
                 Vector2 size = _labelStyle.CalcSize(content);
 
                 // Center horizontally.
                 float x = guiX - size.x * 0.5f;
-                Rect rect = new Rect(x, guiY, size.x, size.y);
-                Rect shadowRect = new Rect(x + 1f, guiY + 1f, size.x, size.y);
+                Rect rect       = new Rect(x,        guiY,        size.x, size.y);
+                Rect shadowRect = new Rect(x + 1f,   guiY + 1f,   size.x, size.y);
 
-                // Drop shadow.
                 GUI.Label(shadowRect, content, _shadowStyle);
-                GUI.Label(rect, content, _labelStyle);
+                GUI.Label(rect,       content, _labelStyle);
             }
+
+            GUI.EndClip();
         }
 
         private void EnsureStyles()

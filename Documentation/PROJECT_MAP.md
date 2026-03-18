@@ -77,11 +77,19 @@ Key files:
 - `Scripts/Rendering/Selection/SelectionBridge.cs` — selection ring + highlight
 - `Scripts/Rendering/Selection/BodyClickHandler.cs` — raycast click selection
 - `Scripts/Rendering/Selection/UIInputBlocker.cs` — blocks camera input over UI
-- `Scripts/Rendering/Labels/BodyLabelController.cs` — IMGUI labels
+- `Scripts/Rendering/Labels/BodyLabelController.cs` — IMGUI labels clipped to viewport; reads panel bounds from UIDocument via worldBound + scaledPixelsPerPoint; collapses clip area when panel is collapsed
 
 ### 4. UI
 
-Key files: unchanged.
+Key files:
+- `Scripts/UI/Panels/ObjectListPanelController.cs` — hierarchical body list; filter bar (ships toggle, collapse/expand all); subtree collapse (▼/▶); selection highlight via BindListItem + CSS class
+- `Scripts/UI/Panels/ObjectDetailsPanelController.cs` — compact properties panel (right)
+- `Scripts/UI/Panels/DetailModalController.cs` — full-screen detail modal with tabs
+- `Scripts/UI/Panels/TimeControlsPanelController.cs` — pause/resume and time scale buttons
+- `Scripts/UI/Localization/UIStrings.cs` — centralized Russian string table; all user-facing strings routed here
+- `Scripts/UI/Core/BodyIconResolver.cs` — resolves PNG icons by body type
+- `Assets/UI/UXML/OrbitalSandboxScreen.uxml` — UI layout: left panel (list + filter bar), center viewport, right panel (details), modal overlay
+- `Assets/UI/USS/OrbitalSandboxScreen.uss` — full theme: CSS variables, panel styles, filter bar, list item hover/selected states, modal tabs, time controls
 
 ### 5. Data
 

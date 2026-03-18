@@ -9,6 +9,14 @@
                 <ui:Button name="left-collapse-btn" class="panel-collapse-btn" text="&#x25BC;" />
             </ui:VisualElement>
             <ui:VisualElement name="left-panel-body" class="panel-body">
+
+                <!-- Filter bar: ships toggle, collapse all, expand all -->
+                <ui:VisualElement name="object-list-filter-bar" class="object-list-filter-bar">
+                    <ui:Button name="filter-btn-ships" class="filter-btn filter-btn-active" />
+                    <ui:Button name="filter-btn-collapse-all" class="filter-btn" />
+                    <ui:Button name="filter-btn-expand-all" class="filter-btn" />
+                </ui:VisualElement>
+
                 <ui:ListView name="object-list-view" class="object-list" />
             </ui:VisualElement>
         </ui:VisualElement>

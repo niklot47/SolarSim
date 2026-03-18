@@ -129,6 +129,55 @@
 }
 
 /* ============================================================
+   OBJECT LIST FILTER BAR
+   ============================================================ */
+
+.object-list-filter-bar {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 3px 0 5px 0;
+    margin-bottom: 2px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--ui-border-color);
+}
+
+/* Base style for all filter buttons */
+.filter-btn {
+    flex-grow: 1;
+    height: 22px;
+    margin: 0 2px;
+    padding: 0 4px;
+    font-size: 11px;
+    color: var(--ui-text-dim);
+    background-color: rgba(4, 16, 8, 0.7);
+    border-width: 1px;
+    border-color: rgba(40, 220, 80, 0.2);
+    border-radius: 2px;
+    -unity-text-align: middle-center;
+    -unity-font-style: normal;
+}
+
+.filter-btn:hover {
+    background-color: var(--ui-bg-button-hover);
+    border-color: var(--ui-border-color);
+    color: var(--ui-text-primary);
+}
+
+/* Active state: ships visible / filter "on" */
+.filter-btn-active {
+    color: var(--ui-text-primary);
+    background-color: rgba(20, 60, 30, 0.85);
+    border-color: var(--ui-border-color);
+}
+
+.filter-btn-active:hover {
+    background-color: var(--ui-bg-button-active);
+    border-color: var(--ui-border-color-bright);
+    color: var(--ui-text-bright);
+}
+
+/* ============================================================
    OBJECT LIST (left panel)
    ============================================================ */
 
@@ -151,6 +200,30 @@
 .list-item-row:hover {
     background-color: var(--ui-bg-row-hover);
     border-color: var(--ui-border-color);
+}
+
+/* Selected overrides hover — two classes = higher specificity than single :hover. */
+.list-item-row.list-item-selected,
+.list-item-row.list-item-selected:hover {
+    background-color: rgba(40, 220, 80, 0.18);
+    border-color: var(--ui-border-color);
+    border-width: 1px;
+    border-radius: 2px;
+}
+
+/* Kill Unity's default opaque blue/grey on the item wrapper.
+   Both class names needed: unity-list-view (older) and unity-collection-view (2022+).
+   !important required because Unity applies inline background via its own theme USS. */
+.unity-list-view__item--selected {
+    background-color: rgba(0, 0, 0, 0) !important;
+}
+.unity-collection-view__item--selected {
+    background-color: rgba(0, 0, 0, 0) !important;
+}
+
+/* Selected label — brighter text. */
+.list-item-selected .list-item-label {
+    color: var(--ui-text-bright);
 }
 
 .list-item-icon {

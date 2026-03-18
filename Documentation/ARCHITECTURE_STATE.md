@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 16 — Adaptive Orbit Line Rendering (OrbitSampler, curvature-based subdivision).
+Last updated after: Step 17 — UI Improvements (object list filter bar, subtree collapse, selection highlight, label viewport clipping).
 
 ------------------------------------------------------------------------
 
@@ -90,8 +90,24 @@ Last updated after: Step 16 — Adaptive Orbit Line Rendering (OrbitSampler, cur
 - **StationDemandEvaluator**, **TradeOpportunityResolver** — unchanged
 - **NPCShipScheduler** — demand-driven trader routing — unchanged
 
-### Selection, UI, Camera, Labels, Ships, Movement, SOI, Bootstrap
+### Selection, UI, Camera, Ships, Movement, SOI, Bootstrap
 - Unchanged
+
+### Object List Panel (UI improvements)
+- **ObjectListPanelController** — hierarchical body list with:
+  - **Filter bar** (inside collapsible panel body, above list): Ships toggle, Collapse All (▶▶), Expand All (▼▼)
+  - **Subtree collapse** — ▼/▶ button on items with children; `_collapsedIds` HashSet drives `AddBodyAndChildren` recursion
+  - **Ship filter** — `_showShips` flag; hides `CelestialBodyType.Ship` entries; `_bodyIdsWithChildren` cache respects filter
+  - **Selection highlight** — driven entirely from `BindListItem` using `_currentSelectionId`; adds/removes CSS class `list-item-selected` on the inner row element; clears Unity's inline background color on the wrapper to bypass built-in opaque selection highlight
+  - Collapse button click handled via `RegisterCallback<PointerDownEvent>(TrickleDown)` to intercept before ListView + `RegisterCallback<ClickEvent>` for toggle; `userData` stores `EntityId` to avoid closure/rebind issues
+
+### IMGUI Label Clipping (Rendering improvement)
+- **BodyLabelController** — IMGUI body name labels now clipped to viewport between panels:
+  - Accepts `UIDocument` in `Initialize()` — queries `left-panel`, `right-panel`, `left-panel-body`, `right-panel-body`
+  - `GUI.BeginClip` restricts rendering to `Rect(leftEdge, 0, rightEdge-leftEdge, Screen.height)`
+  - Panel edges computed via `worldBound.xMax/xMin * scaledPixelsPerPoint` (converts UI Toolkit points → IMGUI physical pixels)
+  - `IsPanelCollapsed(panelBody)` checks `resolvedStyle.display == None` — when panel is collapsed to header-only, the edge is treated as 0 / Screen.width so labels extend to full screen width
+- **OrbitalSandboxCoordinator** — passes `uiDocument` to `labelController.Initialize()`
 
 ------------------------------------------------------------------------
 
@@ -156,7 +172,8 @@ Not regenerated every frame. If orbit parameters change dynamically at runtime (
 - OrbitSampler is pure C# in Simulation layer — delegates all math to OrbitalPositionCalculator
 - OrbitalMapRenderer calls OrbitSampler — contains zero orbital math
 - KeplerSolver, OrbitalPositionCalculator remain pure C# — no changes
-- No changes to World layer, UI layer, Data layer, Debug layer
+- UI layer changes (ObjectListPanelController, UIStrings) contained within UI assembly
+- BodyLabelController change is Rendering layer only — reads UIDocument bounds, no simulation dependency
 - ShipMovementSystem, DockingSystem, NPCShipScheduler, WorldPositionResolver — NOT modified
 
 ### Known technical debt
