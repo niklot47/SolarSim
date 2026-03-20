@@ -28,8 +28,8 @@ Key files:
 - `Scripts/Simulation/Core/WorldPositionResolver.cs` — single source of truth for body world positions
 - `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — **full Keplerian orbit position**: elliptical, inclined, and circular; surface position from lat/lon
 - `Scripts/Simulation/Orbits/KeplerSolver.cs` — Newton-Raphson solver for Kepler's equation
-- `Scripts/Simulation/Orbits/OrbitSampler.cs` — **NEW** adaptive orbit geometry sampling; SampleAdaptive(), SampleUniform(), EvaluateAtMeanAnomaly(); delegates to OrbitalPositionCalculator
-- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — anchored travel with Global/LocalParent frame selection
+- `Scripts/Simulation/Orbits/OrbitSampler.cs` — adaptive orbit geometry sampling; SampleAdaptive(), SampleUniform(), EvaluateAtMeanAnomaly(); delegates to OrbitalPositionCalculator
+- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — SOI-aware travel with symmetric frame switching: Global/LocalParent frames, inward reframe (Case 2), outward reframe (Case 3), early insertion on destination SOI entry (Case 1), phased orbit insertion; HandleSOITransition() receives both previousSOIBodyId and newSOIBodyId; per-ship anti-jitter cooldown
 - `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing via TradeOpportunityResolver
 - `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution
 - `Scripts/Simulation/Docking/DockingSystem.cs` — docking lifecycle
@@ -197,6 +197,12 @@ NPCShipScheduler.Update()
 StationProductionSystem.Update()
 [Periodic] StationDemandEvaluator.EvaluateAll() + TradeOpportunityResolver.Resolve()
 SOIResolver.UpdateAllShips()
+    → returns List<SOITransition> (previousBodyId + newBodyId per ship)
+    → OrbitalSandboxCoordinator forwards each transition to:
+       ShipMovementSystem.HandleSOITransition(shipId, previousSOIBodyId, newSOIBodyId, ...)
+           Case 1: newSOI == destination       → StartInsertionPhase() early
+           Case 2: newSOI relevant, Global frame → ReframeRoute() inward
+           Case 3: previousSOI == LocalFrameBody → ReframeRouteOutward()
 ```
 
 ------------------------------------------------------------------------
@@ -209,3 +215,53 @@ SOIResolver.UpdateAllShips()
 - UI strings: localization-ready via UIStrings (current: Russian)
 - Composition over inheritance, explicit dependencies, single responsibility
 - Inspector-serialized fields: use float (not double) for Unity compatibility
+
+
+------------------------------------------------------------------------
+
+## Strategic Direction — Road to Full Physics
+
+The project's nearest major simulation goal is now a staged transition from the current hybrid navigation model to a more physically grounded orbital flight model.
+
+Current navigation is already strong:
+- Keplerian body motion
+- SOI-aware inward/outward reframing
+- phased insertion and stable arrival
+
+But ships still use route approximation rather than maneuver-derived conic transfer planning.
+
+### Planned sequence
+
+1. **Impact / Collision Check Foundation**
+   - Detect route intersections with stars / planets / moons
+   - Reject unsafe routes or flag impact states
+
+2. **Transfer Planning Lite**
+   - Replace obviously unsafe direct lines with safer planned transfer legs
+   - Still deterministic and gameplay-safe
+
+3. **Hohmann Transfer Lite**
+   - Approximate coplanar transfer-orbit planning
+   - Focus on interplanetary readability and stability
+
+4. **Burn Windows / Phase Alignment**
+   - Delay departure until a target-relative launch window exists
+   - Make route timing matter
+
+5. **Patched Conics Full**
+   - Explicit conic segments per SOI domain
+   - SOI crossing becomes conic handoff, not only frame switching
+
+6. **Delta-v / Energy Model**
+   - Maneuver budget, propulsion capability, costed insertion/capture/escape
+
+7. **Gravity Assist / Capture / Escape Mechanics**
+   - Flyby behavior and energy-driven trajectory change
+
+### Planning rule
+
+Each phase must preserve the project's architecture rules:
+- Simulation owns orbital/navigation logic
+- World stores route/state data only
+- Rendering consumes resolved state without owning physics
+- Upgrades should remain deterministic, debug-friendly, and incremental
