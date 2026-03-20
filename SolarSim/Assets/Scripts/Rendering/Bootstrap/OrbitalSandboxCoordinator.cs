@@ -52,6 +52,18 @@ namespace SpaceSim.Rendering.Bootstrap
         [Min(0.5f)]
         [SerializeField] private float dockingApproachDuration = 2.0f;
 
+        [Header("Navigation")]
+        [Tooltip("Duration of orbit insertion approach phase in sim-seconds. " +
+                 "Ship moves from approach point to final orbit radius. Set 0 to skip (instant snap).")]
+        [Min(0f)]
+        [SerializeField] private float orbitInsertionDuration = 1.5f;
+
+        [Tooltip("Multiplier applied to orbit radius to place the travel endpoint (approach point). " +
+                 "Ship travels here, then insertion phase converges to orbit radius. " +
+                 "Higher = ship arrives further out before insertion.")]
+        [Min(1.0f)]
+        [SerializeField] private float orbitApproachMultiplier = 2.5f;
+
         [Header("Economy")]
         [Tooltip("How often demand/trade opportunities are recalculated (sim-seconds).")]
         [Min(1.0f)]
@@ -92,8 +104,17 @@ namespace SpaceSim.Rendering.Bootstrap
             _positionResolver = new WorldPositionResolver(_registry);
             _soiResolver = new SOIResolver(_registry, _positionResolver);
 
-            _shipMovement = new ShipMovementSystem(_registry);
+            // Ship movement with configurable orbit insertion.
+            _shipMovement = new ShipMovementSystem(_registry)
+            {
+                OrbitInsertionDuration = orbitInsertionDuration,
+                OrbitApproachMultiplier = orbitApproachMultiplier
+            };
             _shipMovement.OnShipArrived += OnShipArrived;
+
+            // Wire navigation debug events to GameDebug.
+            _shipMovement.OnNavEvent += (shipId, msg) =>
+                GameDebug.Log(DebugCategory.SHIPS, msg, source: "Navigation");
 
             _dockingSystem = new DockingSystem(_registry);
             _dockingSystem.ApproachDuration = dockingApproachDuration;
@@ -131,7 +152,6 @@ namespace SpaceSim.Rendering.Bootstrap
             {
                 mapRenderer.Initialize(_registry, _currentSystem, clock, _positionResolver);
 
-                // Wire camera controller so orbit lines can read actual zoom level.
                 if (cameraController != null)
                     mapRenderer.SetCameraController(cameraController);
 
@@ -161,6 +181,7 @@ namespace SpaceSim.Rendering.Bootstrap
                 $"{_soiResolver.GetStatus()}. " +
                 $"NPC: speed={npcTravelSpeed:F1} minDur={npcMinTravelDuration:F1} idle={npcIdleDelay:F1} " +
                 $"dockWait={npcDockingWaitTime:F1} approach={dockingApproachDuration:F1} " +
+                $"insertion={orbitInsertionDuration:F1}s approachMult={orbitApproachMultiplier:F1}x " +
                 $"economy=enabled production=enabled demand=enabled trade=enabled " +
                 $"demandInterval={demandEvalInterval:F1}s " +
                 $"{_tradeResolver.GetStatus()}");
@@ -184,6 +205,7 @@ namespace SpaceSim.Rendering.Bootstrap
         {
             if (_clock == null || _shipMovement == null || _positionResolver == null) return;
 
+            // Sync inspector-editable values each frame.
             if (_npcScheduler != null)
             {
                 _npcScheduler.TravelSpeed = npcTravelSpeed;
@@ -193,6 +215,10 @@ namespace SpaceSim.Rendering.Bootstrap
             }
             if (_dockingSystem != null)
                 _dockingSystem.ApproachDuration = dockingApproachDuration;
+
+            // Sync nav params (allows live tuning in Inspector).
+            _shipMovement.OrbitInsertionDuration = orbitInsertionDuration;
+            _shipMovement.OrbitApproachMultiplier = orbitApproachMultiplier;
 
             double simTime = _clock.CurrentTime;
 
@@ -224,7 +250,11 @@ namespace SpaceSim.Rendering.Bootstrap
 
         private void OnDestroy()
         {
-            if (_shipMovement != null) _shipMovement.OnShipArrived -= OnShipArrived;
+            if (_shipMovement != null)
+            {
+                _shipMovement.OnShipArrived -= OnShipArrived;
+                _shipMovement.OnNavEvent = null;
+            }
             if (_npcScheduler != null)
             {
                 _npcScheduler.OnRouteScheduled -= OnNpcRouteScheduled;
@@ -246,6 +276,7 @@ namespace SpaceSim.Rendering.Bootstrap
         {
             if (npcTravelSpeed < 0.1f) npcTravelSpeed = 0.1f;
             if (npcMinTravelDuration < 0.5f) npcMinTravelDuration = 0.5f;
+            if (orbitApproachMultiplier < 1.0f) orbitApproachMultiplier = 1.0f;
         }
 #endif
 
@@ -280,13 +311,9 @@ namespace SpaceSim.Rendering.Bootstrap
             {
                 var job = ship.ShipInfo.CurrentTradeJob;
                 if (job.Phase == TraderJobPhase.GoingToSource && stationId == job.SourceStationId)
-                {
                     job.Phase = TraderJobPhase.LoadingAtSource;
-                }
                 else if (job.Phase == TraderJobPhase.GoingToDestination && stationId == job.DestinationStationId)
-                {
                     job.Phase = TraderJobPhase.UnloadingAtDestination;
-                }
             }
         }
 
@@ -342,7 +369,9 @@ namespace SpaceSim.Rendering.Bootstrap
             string shipName = ship?.DisplayName ?? t.ShipId.ToString();
             string prevName = prevBody != null ? prevBody.DisplayName : (t.PreviousBodyId.IsValid ? t.PreviousBodyId.ToString() : "none");
             string newName = newBody != null ? newBody.DisplayName : (t.NewBodyId.IsValid ? t.NewBodyId.ToString() : "none");
-            GameDebug.Log(DebugCategory.ORBIT, $"SOI transition: {shipName}: {prevName} -> {newName} (t={t.SimTime:F1})", source: "SOI");
+            GameDebug.Log(DebugCategory.ORBIT,
+                $"[Nav] SOI: {shipName}: {prevName} → {newName} (t={t.SimTime:F1})",
+                source: "SOI");
         }
 
         private void RemoveFromTransitParent(EntityId shipId)
@@ -384,16 +413,13 @@ namespace SpaceSim.Rendering.Bootstrap
         /// </summary>
         private StarSystem LoadStarSystem()
         {
-            // Priority 1: External JSON file.
             if (externalSystemFile != null)
             {
                 var result = JsonStarSystemImporter.LoadFromTextAsset(externalSystemFile, _registry);
-
                 if (result.Success)
                 {
                     UnityEngine.Debug.Log($"[SystemLoader] {result.Message}");
                     GameDebug.Log(DebugCategory.SIM, result.Message, source: "SystemLoader");
-
                     if (result.Validation != null)
                     {
                         foreach (var warning in result.Validation.Warnings)
@@ -402,14 +428,12 @@ namespace SpaceSim.Rendering.Bootstrap
                             GameDebug.LogWarning(DebugCategory.SIM, $"JSON warning: {warning}", source: "SystemLoader");
                         }
                     }
-
                     return result.System;
                 }
 
                 UnityEngine.Debug.LogWarning($"[SystemLoader] External JSON import failed: {result.Message}");
                 GameDebug.LogWarning(DebugCategory.SIM,
                     $"External JSON import failed: {result.Message}", source: "SystemLoader");
-
                 if (result.Validation != null)
                 {
                     foreach (var error in result.Validation.Errors)
@@ -418,11 +442,9 @@ namespace SpaceSim.Rendering.Bootstrap
                         GameDebug.LogError(DebugCategory.SIM, $"JSON validation: {error}", source: "SystemLoader");
                     }
                 }
-
                 UnityEngine.Debug.LogWarning("[SystemLoader] Falling back to ScriptableObject or sample.");
             }
 
-            // Priority 2: ScriptableObject asset.
             if (starSystemDefinition != null)
             {
                 var system = StarSystemLoader.Load(starSystemDefinition, _registry);
@@ -436,7 +458,6 @@ namespace SpaceSim.Rendering.Bootstrap
                 UnityEngine.Debug.LogWarning("[SystemLoader] Asset load failed. Falling back to sample.");
             }
 
-            // Priority 3: Built-in sample.
             UnityEngine.Debug.Log("[SystemLoader] Using built-in sample star system.");
             GameDebug.Log(DebugCategory.SIM, "Using built-in sample star system.", source: "SystemLoader");
             return SampleStarSystemFactory.Create(_registry);

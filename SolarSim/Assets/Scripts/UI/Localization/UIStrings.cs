@@ -115,6 +115,7 @@ namespace SpaceSim.UI.Localization
             ["shipstate.ApproachingStation"] = "\u0421\u0431\u043b\u0438\u0436\u0435\u043d\u0438\u0435",
             ["shipstate.Docking"] = "\u0421\u0442\u044b\u043a\u043e\u0432\u043a\u0430",
             ["shipstate.Docked"] = "\u041f\u0440\u0438\u0441\u0442\u044b\u043a\u043e\u0432\u0430\u043d",
+            ["shipstate.InsertingIntoOrbit"] = "\u0412\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0435 \u0432 \u043e\u0440\u0431\u0438\u0442\u0443",
 
             // Trade job phase names.
             ["tradephase.GoingToSource"] = "\u041a \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u0443",

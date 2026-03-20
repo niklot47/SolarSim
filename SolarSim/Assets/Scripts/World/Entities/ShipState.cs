@@ -24,6 +24,14 @@ namespace SpaceSim.World.Entities
         Docking,
 
         /// <summary>Ship is docked at a station.</summary>
-        Docked
+        Docked,
+
+        /// <summary>
+        /// Ship is in the orbit insertion approach phase.
+        /// Entered after main travel completes; ship moves from approach point
+        /// to final orbit radius in the local frame of the arrival body.
+        /// Transitions to Orbiting when insertion is complete.
+        /// </summary>
+        InsertingIntoOrbit
     }
 }
