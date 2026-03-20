@@ -28,8 +28,10 @@ Key files:
 - `Scripts/Simulation/Core/WorldPositionResolver.cs` — single source of truth for body world positions
 - `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — **full Keplerian orbit position**: elliptical, inclined, and circular; surface position from lat/lon
 - `Scripts/Simulation/Orbits/KeplerSolver.cs` — Newton-Raphson solver for Kepler's equation
-- `Scripts/Simulation/Orbits/OrbitSampler.cs` — adaptive orbit geometry sampling; SampleAdaptive(), SampleUniform(), EvaluateAtMeanAnomaly(); delegates to OrbitalPositionCalculator
-- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — SOI-aware travel with symmetric frame switching: Global/LocalParent frames, inward reframe (Case 2), outward reframe (Case 3), early insertion on destination SOI entry (Case 1), phased orbit insertion; HandleSOITransition() receives both previousSOIBodyId and newSOIBodyId; per-ship anti-jitter cooldown
+- `Scripts/Simulation/Orbits/OrbitSampler.cs` — adaptive orbit geometry sampling
+- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — SOI-aware travel with symmetric frame switching; phased orbit insertion; HandleSOITransition() receives both previousSOIBodyId and newSOIBodyId; per-ship anti-jitter cooldown; **Phase 21: RouteSafetyChecker integration; Phase 22: TransferPlannerLite integration — BuildGlobalRoute/BuildLocalRoute now accept pre-computed approach angle and radius**
+- `Scripts/Simulation/Ships/RouteSafetyChecker.cs` — **(Phase 21)** pure C# static helper; validates planned route segment against large blocking bodies; closest-point-on-segment + sampled points; no allocations
+- `Scripts/Simulation/Ships/TransferPlannerLite.cs` — **(Phase 22)** pure C# static helper; generates up to 10 approach angle variants (0°, ±30°, ±60°, ±90°, ±120°, +150°) for the same destination; tries each with RouteSafetyChecker; returns first safe ApproachPlan or reports failure
 - `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing via TradeOpportunityResolver
 - `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution
 - `Scripts/Simulation/Docking/DockingSystem.cs` — docking lifecycle
@@ -43,65 +45,29 @@ Key files:
 
 ### 2. World
 
-Game domain entities and shared world state models.
-
-Key files:
-- `Scripts/World/Entities/WorldEntity.cs` — base class (EntityId + DisplayName)
-- `Scripts/World/Entities/CelestialBody.cs` — body type, hierarchy, orbit, ShipInfo, StationInfo
-- `Scripts/World/Entities/ShipInfo.cs` — ship data including CurrentTradeJob
-- `Scripts/World/Entities/ShipRoute.cs` — travel route data
-- `Scripts/World/Entities/ShipCargo.cs` — ship cargo hold
-- `Scripts/World/Entities/StationInfo.cs` — station data including Demand
-- `Scripts/World/Entities/StationStorage.cs` — station resource storage
-- `Scripts/World/Entities/StationProductionRecipe.cs` — production recipe
-- `Scripts/World/Entities/StationProductionState.cs` — production progress tracker
-- `Scripts/World/Entities/StationDemand.cs` — demand and surplus scores
-- `Scripts/World/Entities/TradeOpportunity.cs` — single trade route opportunity
-- `Scripts/World/Entities/TraderJob.cs` — trader's current trade assignment
-- `Scripts/World/Entities/ResourceType.cs` — enum: Food, Metals, Fuel, Electronics
-- `Scripts/World/Entities/DockingPort.cs`, `DockingInfo.cs` — docking port model
-- `Scripts/World/Entities/StarSystem.cs` — container with body ids
-- `Scripts/World/ValueTypes/OrbitDefinition.cs` — Keplerian orbital elements (a, e, i, Ω, ω, M₀, T)
-- `Scripts/World/ValueTypes/SpinDefinition.cs` — axial tilt, rotation period
-- `Scripts/World/Systems/WorldRegistry.cs` — central entity registry
+Game domain entities and shared world state models. Key files: unchanged from Step 22.
 
 ### 3. Rendering
 
 Key files:
 - `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point
-- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services, external JSON import support
+- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services; **Phase 21 inspector fields**: routeSafetyEnabled, routeSafetyMargin, routeSafetyCheckSamples (no changes in Phase 22)
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions to build data
-- `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — scene visuals, orbit lines via **OrbitSampler** (adaptive subdivision or uniform fallback)
+- `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — scene visuals, orbit lines via OrbitSampler
 - `Scripts/Rendering/Planets/CelestialBodyView.cs` — body visual representation
 - `Scripts/Rendering/Cameras/OrbitalCameraController.cs` — camera controls
 - `Scripts/Rendering/Selection/SelectionBridge.cs` — selection ring + highlight
 - `Scripts/Rendering/Selection/BodyClickHandler.cs` — raycast click selection
 - `Scripts/Rendering/Selection/UIInputBlocker.cs` — blocks camera input over UI
-- `Scripts/Rendering/Labels/BodyLabelController.cs` — IMGUI labels clipped to viewport; reads panel bounds from UIDocument via worldBound + scaledPixelsPerPoint; collapses clip area when panel is collapsed
+- `Scripts/Rendering/Labels/BodyLabelController.cs` — IMGUI labels clipped to viewport
 
 ### 4. UI
 
-Key files:
-- `Scripts/UI/Panels/ObjectListPanelController.cs` — hierarchical body list; filter bar (ships toggle, collapse/expand all); subtree collapse (▼/▶); selection highlight via BindListItem + CSS class
-- `Scripts/UI/Panels/ObjectDetailsPanelController.cs` — compact properties panel (right)
-- `Scripts/UI/Panels/DetailModalController.cs` — full-screen detail modal with tabs
-- `Scripts/UI/Panels/TimeControlsPanelController.cs` — pause/resume and time scale buttons
-- `Scripts/UI/Localization/UIStrings.cs` — centralized Russian string table; all user-facing strings routed here
-- `Scripts/UI/Core/BodyIconResolver.cs` — resolves PNG icons by body type
-- `Assets/UI/UXML/OrbitalSandboxScreen.uxml` — UI layout: left panel (list + filter bar), center viewport, right panel (details), modal overlay
-- `Assets/UI/USS/OrbitalSandboxScreen.uss` — full theme: CSS variables, panel styles, filter bar, list item hover/selected states, modal tabs, time controls
+Key files: unchanged from Step 21.
 
-### 5. Data
+### 5. Data / Shared / Debug
 
-Key files: unchanged.
-
-### Shared
-
-Cross-cutting utilities shared by all layers. Unchanged.
-
-### Debug
-
-Structured debug event and snapshot system. Unchanged.
+Unchanged.
 
 ------------------------------------------------------------------------
 
@@ -119,71 +85,36 @@ Structured debug event and snapshot system. Unchanged.
 
 ------------------------------------------------------------------------
 
-## Orbital Calculation Pipeline
+## Route Planning and Safety Pipeline (Phases 21 + 22)
 
-### Position Calculation (per tick)
 ```
-OrbitDefinition (a, e, i, Ω, ω, M₀, T)
+ShipMovementSystem.StartRoute()
     ↓
-OrbitalPositionCalculator.CalculatePosition(orbit, simTime)
-    ↓
-Mean anomaly M = M₀ + 2π(t - t₀)/T
-    ↓
-[if e ≈ 0 and flat] → fast path: (a*cos(M), 0, a*sin(M))
-    ↓
-[if e > 0] KeplerSolver.Solve(M, e) → eccentric anomaly E
-    ↓
-Orbital plane: x = a(cosE - e), z = a√(1-e²)sinE
-    ↓
-[if inclined] Rotate by ω, i, Ω → world coordinates (x, y, z)
-    ↓
-WorldPositionResolver adds parent world position
-```
+ComputeShipWorldPosition(ship, currentSimTime)
+approachRadius = destOrbitRadius × OrbitApproachMultiplier
+estimatedArrivalTime = currentSimTime + travelDuration
 
-### Orbit Line Rendering (per orbit line creation)
-```
-OrbitDefinition
-    ↓
-OrbitSampler.SampleAdaptive(orbit, tolerance, maxDepth, seedSegments)
-    - generates seed points at evenly spaced mean anomaly
-    - recursively subdivides where chord error > tolerance
-    - calls OrbitalPositionCalculator.CalculateOrbitPoint() for every sample
-    ↓
-List<SimVec3> parent-relative positions (adaptive count)
-    ↓
-SceneScaleConfig.DistanceScale applied by OrbitalMapRenderer
-    ↓
-LineRenderer positions (useWorldSpace = false, loop = true)
-    ↓
-LineRenderer transform.position = parent world position (updated each tick)
-```
+if ImpactSafetyEnabled:
+    ── TransferPlannerLite.FindSafeApproach() ──────────────────────────
+    |  destWorldAtArrival = positionResolver(arrivalParentId, arrivalTime)
+    |  baseAngle = atan2(ship - dest)
+    |  for offset in [0°, +30°, -30°, +60°, -60°, +90°, -90°, +120°, -120°, +150°]:
+    |      candidateApproach = dest + approachRadius × direction(baseAngle + offset)
+    |      RouteSafetyChecker.IsSafe(shipPos, candidateApproach, ...)
+    |          for each Star/Planet/Moon/Asteroid:
+    |              PointToSegmentDistanceSq < (radius + margin)²?
+    |      → first safe: return ApproachPlan(angle, worldPos, variantIndex)
+    |  → all failed: return ApproachPlan(Success=false)
+    ──────────────────────────────────────────────────────────────────
+    if !Success: log + return false   (ship waits, scheduler retries)
+    if variantIndex > 0: log "direct blocked, using variant #N"
+else:
+    DirectApproach() — computes direct angle, no validation
 
-Both pipelines use the same `OrbitalPositionCalculator.CalculateOrbitPoint()` internally.
-
-------------------------------------------------------------------------
-
-## Star System Loading Pipelines
-
-### Pipeline 1: ScriptableObject (existing)
-```
-StarSystemDefinition (ScriptableObject)
-    → StarSystemLoader.Load()
-    → StarSystemBuildData
-    → StarSystemBuilder.Build()
-    → WorldRegistry + StarSystem
-    → EconomyInitializer.Initialize()
-```
-
-### Pipeline 2: External JSON
-```
-JSON file (TextAsset or file path)
-    → JsonStarSystemImporter
-    → StarSystemJson (DTO)
-    → StarSystemJsonValidator.Validate()
-    → ConvertToBuildData() → StarSystemBuildData
-    → StarSystemBuilder.Build()
-    → WorldRegistry + StarSystem
-    → EconomyInitializer.Initialize()
+BuildGlobalRoute(approachAngleDeg, approachRadius, shipWorldPos)  or
+BuildLocalRoute(approachAngleDeg, approachRadius, shipWorldPos)
+    ↓
+commit ship state → ShipState.Travelling
 ```
 
 ------------------------------------------------------------------------
@@ -194,15 +125,14 @@ JSON file (TextAsset or file path)
 ShipMovementSystem.Update()
 DockingSystem.Update()
 NPCShipScheduler.Update()
+    → ShipMovementSystem.StartRoute()
+        → TransferPlannerLite.FindSafeApproach()   ← Phase 22
+            → RouteSafetyChecker.IsSafe()          ← Phase 21 (called per candidate)
+        → Build route with chosen approach geometry
 StationProductionSystem.Update()
-[Periodic] StationDemandEvaluator.EvaluateAll() + TradeOpportunityResolver.Resolve()
+[Periodic] StationDemandEvaluator + TradeOpportunityResolver
 SOIResolver.UpdateAllShips()
-    → returns List<SOITransition> (previousBodyId + newBodyId per ship)
-    → OrbitalSandboxCoordinator forwards each transition to:
-       ShipMovementSystem.HandleSOITransition(shipId, previousSOIBodyId, newSOIBodyId, ...)
-           Case 1: newSOI == destination       → StartInsertionPhase() early
-           Case 2: newSOI relevant, Global frame → ReframeRoute() inward
-           Case 3: previousSOI == LocalFrameBody → ReframeRouteOutward()
+    → ShipMovementSystem.HandleSOITransition()
 ```
 
 ------------------------------------------------------------------------
@@ -216,52 +146,38 @@ SOIResolver.UpdateAllShips()
 - Composition over inheritance, explicit dependencies, single responsibility
 - Inspector-serialized fields: use float (not double) for Unity compatibility
 
-
 ------------------------------------------------------------------------
 
 ## Strategic Direction — Road to Full Physics
 
-The project's nearest major simulation goal is now a staged transition from the current hybrid navigation model to a more physically grounded orbital flight model.
+Completed:
+1. Impact / Collision Check Foundation ✓ (Phase 21)
+2. Transfer Planning Lite ✓ (Phase 22)
 
-Current navigation is already strong:
-- Keplerian body motion
-- SOI-aware inward/outward reframing
-- phased insertion and stable arrival
+### New Direction
 
-But ships still use route approximation rather than maneuver-derived conic transfer planning.
+3. Maneuver Planning Foundation
+   - generalized transfer planning
+   - departure timing control
+   - strategy selection (not fixed geometry)
 
-### Planned sequence
+4. Burn Windows / Phase Alignment
+   - phase-based departure
+   - scheduler-aware waiting behavior
 
-1. **Impact / Collision Check Foundation**
-   - Detect route intersections with stars / planets / moons
-   - Reject unsafe routes or flag impact states
+5. Patched Conics Full
+   - explicit trajectory segments per SOI
+   - physically consistent transitions
 
-2. **Transfer Planning Lite**
-   - Replace obviously unsafe direct lines with safer planned transfer legs
-   - Still deterministic and gameplay-safe
+6. Delta-v / Energy Model
+   - maneuver cost
+   - route comparison
 
-3. **Hohmann Transfer Lite**
-   - Approximate coplanar transfer-orbit planning
-   - Focus on interplanetary readability and stability
+7. Hohmann Helper (Optional)
+   - baseline estimator for simple cases
+   - not core system
 
-4. **Burn Windows / Phase Alignment**
-   - Delay departure until a target-relative launch window exists
-   - Make route timing matter
-
-5. **Patched Conics Full**
-   - Explicit conic segments per SOI domain
-   - SOI crossing becomes conic handoff, not only frame switching
-
-6. **Delta-v / Energy Model**
-   - Maneuver budget, propulsion capability, costed insertion/capture/escape
-
-7. **Gravity Assist / Capture / Escape Mechanics**
-   - Flyby behavior and energy-driven trajectory change
-
-### Planning rule
-
-Each phase must preserve the project's architecture rules:
-- Simulation owns orbital/navigation logic
-- World stores route/state data only
-- Rendering consumes resolved state without owning physics
-- Upgrades should remain deterministic, debug-friendly, and incremental
+8. Advanced Transfers
+   - intercept trajectories
+   - moving targets
+   - non-coplanar transfers

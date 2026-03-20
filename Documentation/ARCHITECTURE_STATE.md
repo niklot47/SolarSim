@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 20 — Symmetric SOI Navigation (SOI Exit + Outward Frame Switching).
+Last updated after: Step 22 — Transfer Planning Lite (multi-variant approach geometry selection).
 
 ------------------------------------------------------------------------
 
@@ -33,126 +33,105 @@ Last updated after: Step 20 — Symmetric SOI Navigation (SOI Exit + Outward Fra
 - **OrbitalMapRenderer** — scene visuals, orbit lines via OrbitSampler
 - **CelestialBodyView** — visual binding
 
-### Fully Symmetric SOI Navigation — Patched-Conics Lite (Step 19 + 20)
+### Fully Symmetric SOI Navigation — Patched-Conics Lite (Steps 19 + 20)
 
-#### HandleSOITransition() — updated signature (Step 20)
+Three-case SOI frame switching (Case 1: early insertion, Case 2: inward reframe, Case 3: outward reframe).
+`HandleSOITransition()` receives both `previousSOIBodyId` and `newSOIBodyId`.
+Anti-jitter via `_lastFrameSwitchTime` (MinFrameSwitchInterval = 2.0 sim-s).
 
-```csharp
-public void HandleSOITransition(
-    EntityId shipId,
-    EntityId previousSOIBodyId,   // NEW in Step 20
-    EntityId newSOIBodyId,
-    double simTime,
-    Func<EntityId, double, SimVec3> positionResolver)
-```
+### Route Safety Check — Impact / Collision Check Foundation (Step 21)
 
-Previously only `newSOIBodyId` was passed. Now both are forwarded from `OrbitalSandboxCoordinator.HandleSOITransitionEvent()` via `t.PreviousBodyId` and `t.NewBodyId`.
+**RouteSafetyChecker** — pure C# static helper. Validates a route's straight-line path against
+all large celestial bodies (Star, Planet, Moon, Asteroid). Uses closest-point-on-segment geometry
+plus N sampled points. No allocations. Runs only at route creation.
 
-#### Three-Case SOI Frame Switching
+Inspector fields on OrbitalSandboxCoordinator (wired to ShipMovementSystem):
+- `routeSafetyEnabled` (bool, default true)
+- `routeSafetyMargin` (float Mm, default 0.1)
+- `routeSafetyCheckSamples` (int, default 20)
 
-**Case 1 — Entered destination SOI:**
-- `newSOIBodyId == arrivalParentId`
-- `StartInsertionPhase()` triggered immediately
-- Progress < 0.95 guard prevents double-triggering near end of travel
-- Highest priority — returns early, no other case fires
+### Transfer Planning Lite (Step 22)
 
-**Case 2 — Entered intermediate SOI (inward reframe):**
-- `newSOIBodyId` is valid, route is currently Global frame
-- `IsBodyRelatedToDestination()` confirms relevance
-- `ReframeRoute()` — re-anchors remaining leg in new body's local frame
-- Only fires for Global → LocalParent transitions
+**TransferPlannerLite** — pure C# static helper. When the direct approach is blocked,
+tries up to 10 approach geometry variants for the same destination before giving up.
 
-**Case 3 — Left the active local frame body's SOI (outward reframe) [NEW]:**
-- `previousSOIBodyId == route.LocalFrameBodyId` — the exited body IS the current frame
-- Route is currently in LocalParent frame
-- `ReframeRouteOutward()` — re-anchors outward into parent or global frame
-- Fires for LocalParent → broader LocalParent or LocalParent → Global transitions
+#### Candidate generation
 
-#### ReframeRouteOutward() — new in Step 20
-
-New frame selection logic:
-```
-if newSOIBodyId is valid AND is NOT a star:
-    → switch to LocalParent frame of newSOIBodyId
-else (newSOI is star, or no SOI at all):
-    → switch to Global frame
-```
-
-In both cases:
-- Current world position captured exactly (no teleport)
-- Approach point recomputed from current position toward destination
-- Route.DepartureTime = simTime, TravelDuration = remaining duration
-- ship.ShipInfo.OverrideWorldPosition unchanged
-
-Navigation log examples:
-```
-[Nav] Транспорт «Карго-7»: left Luna SOI, reframing outward → Terra frame at t=142.3
-[Nav] Транспорт «Карго-7»: left Terra SOI, reframing outward → global frame at t=188.7
-```
-
-#### Anti-Jitter Mechanism
-
-`_lastFrameSwitchTime` dictionary (per ship, sim-time of last switch).  
-`MinFrameSwitchInterval = 2.0` sim-seconds.
-
-If a ship oscillates near an SOI boundary:
-- SOIResolver fires a transition each time the dominant body changes
-- The cooldown prevents HandleSOITransition from firing every single tick
-- After 2.0 sim-seconds, normal detection resumes
-
-Additional stability: `StartRoute()` clears the cooldown entry for the ship, so new routes always start fresh. `CompleteArrival()` also clears the entry.
-
-#### Full Transition Matrix
-
-| Frame before | SOI event | Condition | Action |
-|---|---|---|---|
-| Any | newSOI = destination | progress < 0.95 | Case 1: early insertion |
-| Global | newSOI enters hierarchy | IsBodyRelated() | Case 2: inward reframe |
-| LocalParent | previousSOI = LocalFrameBodyId | remaining ≥ 5% | Case 3: outward reframe |
-| LocalParent | neither of the above | — | no-op |
-
-#### Coordinator Change (Step 20)
-
-`OrbitalSandboxCoordinator.HandleSOITransitionEvent()` now calls:
-```csharp
-_shipMovement.HandleSOITransition(
-    t.ShipId,
-    t.PreviousBodyId,   // ← new argument
-    t.NewBodyId,
-    t.SimTime,
-    ...);
-```
-
-Previously only `t.NewBodyId` was passed. `t.PreviousBodyId` was already available on `SOITransition` (unchanged struct).
-
-### Ship Travel Flow (Step 20)
+Starting from the "direct" approach angle (direction from destination body toward the ship's
+current world position), 10 candidates are generated by rotating this angle by fixed offsets:
 
 ```
-StartRoute():
-    DetermineRouteFrame() → LocalParent or Global
-    Build route with approach point
-    _lastFrameSwitchTime.Remove(shipId)   ← cooldown reset
-    ship.State = Travelling
-    ↓
-Update() each tick (Travelling):
-    lerp position in current frame
-    ↓ [SOI boundary crossed → HandleSOITransition called]:
-        Case 1: destination SOI → StartInsertionPhase()
-        Case 2: intermediate SOI, Global → ReframeRoute() inward
-        Case 3: left frame body SOI → ReframeRouteOutward()
-    ↓ [progress >= 1.0]:
-    StartInsertionPhase()
-    ↓
-Update() each tick (InsertingIntoOrbit):
-    smooth-step local interpolation to orbit point
-    ↓
-CompleteArrival():
-    set orbit, clear route
-    _lastFrameSwitchTime.Remove(shipId)   ← cooldown cleanup
-    Orbiting
+Candidate 0 (direct):   offset =   0°
+Candidate 1:            offset = +30°
+Candidate 2:            offset = -30°
+Candidate 3:            offset = +60°
+Candidate 4:            offset = -60°
+Candidate 5:            offset = +90°
+Candidate 6:            offset = -90°
+Candidate 7:            offset = +120°
+Candidate 8:            offset = -120°
+Candidate 9:            offset = +150°
 ```
 
-### All Previous Systems (unchanged)
+Left-right symmetric ordering means the nearest alternatives to the direct approach are
+tried first, minimizing unnecessary deviation. The approach radius is constant across all
+angle-offset candidates (= `destOrbitRadius × OrbitApproachMultiplier`).
+
+#### Selection policy
+
+Candidates are validated in order by RouteSafetyChecker. The **first** safe candidate is
+selected immediately — no scoring or comparison. This keeps planning deterministic and cheap.
+
+#### Integration in ShipMovementSystem.StartRoute()
+
+```
+shipWorldPos = ComputeShipWorldPosition(...)
+approachRadius = destOrbitRadius × OrbitApproachMultiplier
+
+if (ImpactSafetyEnabled):
+    plan = TransferPlannerLite.FindSafeApproach(shipWorldPos, arrivalParentId, approachRadius, ...)
+    if not plan.Success:
+        log "[Nav] X: all N variants unsafe to Y (blocked by Z), waiting"
+        return false
+    if plan.VariantIndex > 0:
+        log "[Nav] X: direct route blocked by Z, using variant #N to Y (approach A°)"
+else:
+    plan = TransferPlannerLite.DirectApproach(...)  // no safety check
+
+BuildGlobalRoute(... plan.ApproachAngleDeg, plan.ApproachRadius, shipWorldPos) or
+BuildLocalRoute(... plan.ApproachAngleDeg, plan.ApproachRadius, shipWorldPos)
+→ commit ship state
+```
+
+#### Route builder refactor
+
+`BuildGlobalRoute` and `BuildLocalRoute` now accept `approachAngleDeg` and `approachRadius`
+as explicit parameters (pre-computed by TransferPlannerLite) instead of recomputing them
+internally. `shipWorldPos` is also passed in (computed once in `StartRoute()`).
+
+The approach world position formula is the same as before:
+```
+approachWorldPos = destPosAtArrival + approachRadius × (cos(approachAngleRad), 0, sin(approachAngleRad))
+```
+
+#### Outcome for NPC ships
+
+- Routes through ecliptic geometry that would block on the direct path now succeed using
+  an alternative approach angle. Ships become far less likely to wait on blocked routes.
+- If all 10 candidates fail (e.g., ship is surrounded by bodies on all sides), behavior
+  is exactly as in Phase 21: `StartRoute()` returns false, ship stays Orbiting, scheduler
+  retries next tick.
+- The destination is always unchanged. No waypoints or intermediate bodies are involved.
+
+#### Frame compatibility
+
+Both Global and LocalParent routes benefit from the planner. The approach angle is computed
+in world space; `BuildLocalRoute` converts the world angle to a local-space offset at build time,
+consistent with the existing route structure. SOI reframing, phased insertion, and all
+HandleSOITransition cases are unaffected — they operate on the ShipRoute struct, which has
+the same format regardless of which candidate was chosen.
+
+### All Previous Systems (unchanged from Step 21)
 - Phased orbit insertion (Step 18)
 - Elliptical orbit foundation, KeplerSolver, OrbitalPositionCalculator
 - WorldPositionResolver, Star System Data Loading
@@ -165,12 +144,11 @@ CompleteArrival():
 
 | System | Notes |
 |---|---|
-| Impact / collision checks | Route/body intersection checks for stars, planets, moons |
-| Transfer planning lite | Safe direct-route planning before Hohmann-level navigation |
-| Hohmann / burn windows | Transfer timing and simplified maneuver planning |
-| Patched conics full | True conic sections per SOI segment |
-| SOI exit for non-frame bodies | Currently only reframes when the ACTIVE frame body's SOI is exited |
-| Insertion burn scaling | Duration proportional to SOI radius or route distance |
+| Hohmann Transfer Lite | Approximate coplanar transfer-orbit planning |
+| Burn Windows / Phase Alignment | Delay departure until target-relative window exists |
+| Patched Conics Full | True conic sections per SOI segment |
+| Varying approach radius | Larger multiplier as additional fallback when all angle variants fail |
+| Mid-route body position accuracy | Check at midpoint/arrival time, not only departure time |
 | Prices / Money | Currency, buy/sell prices |
 | Player trading UI | Buy/sell interface |
 | Save/Load | WorldRegistry serialization |
@@ -183,67 +161,145 @@ CompleteArrival():
 ## Architecture Health Notes
 
 ### Clean boundaries maintained
-- ShipMovementSystem is pure C# — no UnityEngine reference
-- `previousSOIBodyId` arrives as a plain `EntityId` via delegate — no coupling to SOIResolver
-- `_lastFrameSwitchTime` dictionary is private to ShipMovementSystem — no leak to other layers
-- `SOITransition` struct already had `PreviousBodyId` field; no World/Simulation changes needed
+- `TransferPlannerLite` is pure C# in Simulation.Ships — no UnityEngine reference
+- `RouteSafetyChecker` unchanged — still a standalone, reusable validator
+- `ShipMovementSystem` is the sole integration point for both the planner and the checker
+- `BuildGlobalRoute` / `BuildLocalRoute` are now purely geometric builders; all safety
+  and planning logic is handled before they are called
 - NPCShipScheduler, DockingSystem, Economy, SOIResolver — NOT modified
+- OrbitalSandboxCoordinator — NOT modified (Phase 21 inspector fields already sufficient)
+- No LINQ in any route planning or validation path
 
 ### Known limitations
-- Outward reframe only fires when the exited body was the **active local frame** body.  
-  If a ship is in Terra-local frame and happens to cross Venus's SOI boundary during a long global leg that was later reframed, the irrelevant crossing is ignored (correct behavior).
-- SOI exit for ships in Global frame is not handled (no local frame to leave).
-- MinFrameSwitchInterval (2.0s) is a fixed constant; not exposed to Inspector.
+- Approach radius is fixed across all angle-offset candidates (Phase 22 scope).
+  A natural follow-up is to try a larger radius multiplier when all angle variants fail.
+- Body positions are resolved at departure `currentSimTime` for the safety check, not
+  at the midpoint or arrival time. This is the same approximation as Phase 21.
+- The approach point is computed in the destination's reference frame (world XZ plane).
+  Inclined body orbits could theoretically be better served by varying the Y-component
+  of the approach vector, but this is deferred.
+- The planner only validates Phase 1 (start → approach point). Phase 2 (insertion arc)
+  is not validated — insertion arcs are very short and body-local, making collision
+  during insertion extremely unlikely.
 
 ------------------------------------------------------------------------
 
-## Next Recommended Development Phase
+## Route Planning and Safety Pipeline (Steps 21 + 22)
 
-### New Major Goal: Road to Full Physics
+```
+ShipMovementSystem.StartRoute()
+    ↓
+ComputeShipWorldPosition()    ← ship's current world pos
+approachRadius = destOrbitRadius × OrbitApproachMultiplier
 
-The nearest large-scale project goal is now **transition from hybrid gameplay navigation toward full physics-inspired orbital flight**.
+if ImpactSafetyEnabled:
+    TransferPlannerLite.FindSafeApproach(
+        shipWorldPos, arrivalParentId, approachRadius,
+        currentSimTime, estimatedArrivalTime,
+        registry, positionResolver, excludeOriginId,
+        safetyMargin, safetyCheckSamples)
+    ↓
+    for each candidate (angle offset 0°, ±30°, ±60°, ±90°, ±120°, +150°):
+        approachWorldPos = destPosAtArrival + approachRadius × direction(baseAngle + offset)
+        RouteSafetyChecker.IsSafe(shipWorldPos, approachWorldPos, registry, ...)
+            for each large body (Star/Planet/Moon/Asteroid):
+                skip origin, skip arrivalParent
+                PointToSegmentDistanceSq(bodyCenter, seg) < (radius + margin)²?
+                N sampled points vs sphere?
+        → first safe candidate: return plan
+    → all failed: return plan.Success = false
+    ↓
+    if !plan.Success: log + return false
+    if plan.VariantIndex > 0: log "direct blocked, using variant #N"
+else:
+    DirectApproach() — no check
 
-This does **not** mean jumping directly to full n-body simulation. The recommended path is staged and architecture-safe.
+BuildGlobalRoute(... approachAngleDeg, approachRadius, shipWorldPos)  or
+BuildLocalRoute(... approachAngleDeg, approachRadius, shipWorldPos)
+    ↓
+commit ship state → ShipState.Travelling
+```
 
-### Recommended Roadmap
+------------------------------------------------------------------------
 
-**Phase 21 — Impact / Collision Check Foundation**
-- Detect route segments intersecting stars / planets / moons
-- Reject unsafe routes before launch or flag in-flight impact
-- Keep routing deterministic and cheap
+## Next Recommended Development Phase — Road to Full Physics
 
-**Phase 22 — Transfer Planning Lite**
-- Add simple transfer planning for direct routes
-- Prefer safe arcs over obviously colliding lines
-- Prepare route representation for maneuver-driven travel
+Current state:
+- Keplerian orbits (elliptical + inclined) — DONE
+- SOI transitions (patched-conics lite) — DONE
+- Collision-safe routing — DONE
+- Transfer geometry variants — DONE
 
-**Phase 23 — Hohmann Transfer Lite**
-- Add approximate transfer-orbit planning for coplanar interplanetary travel
-- Use gameplay-friendly simplifications
-- Keep compatibility with existing NPC scheduler
+### Phase 23 — Maneuver Planning Foundation
 
-**Phase 24 — Burn Windows / Phase Alignment**
-- Ships should not depart at arbitrary times for all destinations
-- Add wait-for-window behavior and target phase checks
+Replace "Hohmann as next step" with a generalized maneuver planning layer.
 
-**Phase 25 — Patched Conics Full**
-- Replace current route approximation with explicit conic segments per SOI region
-- True transfer leg + SOI crossing + local conic continuation
+Goals:
+- Decouple navigation from fixed "direct approach" logic
+- Introduce maneuver planning as a system, not a special-case transfer
+- Support arbitrary orbital geometry (elliptical, inclined)
 
-**Phase 26 — Delta-v / Energy Model**
+Responsibilities:
+- Choose departure timing (not necessarily immediate)
+- Select transfer strategy (direct / offset / future extensions)
+- Provide trajectory segments for route builder
+- Remain deterministic and cheap (NPC-compatible)
+
+Notes:
+- Hohmann is NOT a primary phase anymore
+- It becomes an optional helper / special-case baseline
+
+---
+
+### Phase 24 — Burn Windows / Phase Alignment
+
+- Delay departure until favorable geometry exists
+- Use phase-angle heuristics
+- Integrate with NPC scheduler (ships may "wait for window")
+
+---
+
+### Phase 25 — Patched Conics Full
+
+- Explicit trajectory segments per SOI
+- Proper entry/exit conditions
+- Remove remaining approximations from current SOI transitions
+
+---
+
+### Phase 26 — Delta-v / Energy Model
+
 - Introduce maneuver cost
-- Burn budget / propulsion capability
-- Capture / escape become energy-dependent rather than purely state-driven
+- Enable comparison between routes
+- Foundation for gameplay constraints
 
-**Phase 27 — Gravity Assist / Capture / Escape Mechanics**
-- Flyby behavior
-- Assisted trajectory changes
-- More believable interplanetary navigation
+---
 
-### Notes
+### Phase 27 — Hohmann Helper (Optional)
 
-- Current system is already a strong hybrid navigation model: Keplerian body motion, SOI-aware reframing, phased insertion.
-- The biggest remaining realism gap is that ships still do not follow maneuver-derived transfer trajectories.
-- Player-specific systems are no longer the immediate priority until the full-physics roadmap reaches a more mature state.
+- Implement as:
+  - baseline transfer estimator
+  - fallback for simple coplanar cases
+- NOT required for general navigation
 
-Recommendation: **Phase 21 — Impact / Collision Check Foundation** first, then move step-by-step toward transfer planning and maneuver-based navigation.
+---
+
+### Phase 28 — Advanced Transfers (Lambert-lite / Intercept)
+
+- Support:
+  - moving targets (ships)
+  - non-coplanar transfers
+  - intercept trajectories
+
+---
+
+## Important Shift
+
+Navigation is no longer:
+    "compute one transfer (Hohmann)"
+
+It becomes:
+    "plan maneuver under constraints"
+
+Hohmann → special case  
+Planner → core system

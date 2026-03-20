@@ -61,6 +61,21 @@ namespace SpaceSim.Rendering.Bootstrap
         [Min(1.0f)]
         [SerializeField] private float orbitApproachMultiplier = 2.5f;
 
+        [Header("Route Safety (Phase 21)")]
+        [Tooltip("When enabled, routes that intersect stars/planets/moons are rejected before launch.")]
+        [SerializeField] private bool routeSafetyEnabled = true;
+
+        [Tooltip("Extra clearance (Mm) added to each body radius for route intersection tests. " +
+                 "Near-grazing routes are rejected too.")]
+        [Min(0f)]
+        [SerializeField] private float routeSafetyMargin = 0.1f;
+
+        [Tooltip("Number of sample points along the planned route for the collision check. " +
+                 "Higher values are more accurate but slightly more expensive per route start. " +
+                 "This check only runs when a new route is planned, not every frame.")]
+        [Range(5, 50)]
+        [SerializeField] private int routeSafetyCheckSamples = 20;
+
         [Header("Economy")]
         [Tooltip("How often demand/trade opportunities are recalculated (sim-seconds).")]
         [Min(1.0f)]
@@ -104,7 +119,10 @@ namespace SpaceSim.Rendering.Bootstrap
             _shipMovement = new ShipMovementSystem(_registry)
             {
                 OrbitInsertionDuration = orbitInsertionDuration,
-                OrbitApproachMultiplier = orbitApproachMultiplier
+                OrbitApproachMultiplier = orbitApproachMultiplier,
+                ImpactSafetyEnabled = routeSafetyEnabled,
+                ImpactSafetyMargin = routeSafetyMargin,
+                ImpactCheckSamples = routeSafetyCheckSamples
             };
             _shipMovement.OnShipArrived += OnShipArrived;
             _shipMovement.OnNavEvent += (shipId, msg) =>
@@ -169,7 +187,8 @@ namespace SpaceSim.Rendering.Bootstrap
                 $"NPC: speed={npcTravelSpeed:F1} minDur={npcMinTravelDuration:F1} idle={npcIdleDelay:F1} " +
                 $"dockWait={npcDockingWaitTime:F1} approach={dockingApproachDuration:F1} " +
                 $"insertion={orbitInsertionDuration:F1}s approachMult={orbitApproachMultiplier:F1}x " +
-                $"demandInterval={demandEvalInterval:F1}s {_tradeResolver.GetStatus()}");
+                $"demandInterval={demandEvalInterval:F1}s {_tradeResolver.GetStatus()} " +
+                $"routeSafety={routeSafetyEnabled} margin={routeSafetyMargin:F2}Mm samples={routeSafetyCheckSamples}");
         }
 
         private void RegisterDebugProviders()
@@ -202,6 +221,12 @@ namespace SpaceSim.Rendering.Bootstrap
             _shipMovement.OrbitInsertionDuration = orbitInsertionDuration;
             _shipMovement.OrbitApproachMultiplier = orbitApproachMultiplier;
 
+            // Route safety settings are inspector-configurable and applied each frame
+            // so they can be tuned at runtime during development.
+            _shipMovement.ImpactSafetyEnabled = routeSafetyEnabled;
+            _shipMovement.ImpactSafetyMargin = routeSafetyMargin;
+            _shipMovement.ImpactCheckSamples = routeSafetyCheckSamples;
+
             double simTime = _clock.CurrentTime;
 
             _shipMovement.Update(simTime, (bodyId, time) => _positionResolver.Resolve(bodyId, time));
@@ -217,8 +242,6 @@ namespace SpaceSim.Rendering.Bootstrap
                 _lastDemandEvalTime = simTime;
             }
 
-            // SOI transitions: now passes BOTH previousBodyId and newBodyId
-            // so ShipMovementSystem can handle both inward (entry) and outward (exit) reframes.
             if (_soiResolver != null)
             {
                 var transitions = _soiResolver.UpdateAllShips(simTime);
@@ -259,12 +282,13 @@ namespace SpaceSim.Rendering.Bootstrap
             if (npcTravelSpeed < 0.1f) npcTravelSpeed = 0.1f;
             if (npcMinTravelDuration < 0.5f) npcMinTravelDuration = 0.5f;
             if (orbitApproachMultiplier < 1.0f) orbitApproachMultiplier = 1.0f;
+            if (routeSafetyMargin < 0f) routeSafetyMargin = 0f;
+            if (routeSafetyCheckSamples < 5) routeSafetyCheckSamples = 5;
         }
 #endif
 
         // ---------------------------------------------------------------
-        // SOI event handler — key change vs Step 19:
-        //   passes t.PreviousBodyId to enable outward frame switching
+        // SOI event handler
         // ---------------------------------------------------------------
 
         private void HandleSOITransitionEvent(SOITransition t)
@@ -283,13 +307,11 @@ namespace SpaceSim.Rendering.Bootstrap
                 $"[Nav] SOI: {shipName}: {prevName} → {newName} (t={t.SimTime:F1})",
                 source: "SOI");
 
-            // Forward BOTH previous and new SOI body IDs.
-            // ShipMovementSystem uses previousSOIBodyId to detect outward exits (Case 3).
             if (_shipMovement != null && _positionResolver != null)
             {
                 _shipMovement.HandleSOITransition(
                     t.ShipId,
-                    t.PreviousBodyId,   // NEW: passed for outward exit detection
+                    t.PreviousBodyId,
                     t.NewBodyId,
                     t.SimTime,
                     (bodyId, time) => _positionResolver.Resolve(bodyId, time));
@@ -297,7 +319,7 @@ namespace SpaceSim.Rendering.Bootstrap
         }
 
         // ---------------------------------------------------------------
-        // Event handlers (unchanged)
+        // Event handlers
         // ---------------------------------------------------------------
 
         private void OnNpcRouteScheduled(EntityId shipId)

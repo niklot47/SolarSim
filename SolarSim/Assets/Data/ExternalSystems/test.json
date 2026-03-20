@@ -1,0 +1,137 @@
+{
+  "systemName": "Elliptical Test System",
+  "systemKey": "elliptical_test",
+  "localizationKey": "system.elliptical_test",
+  "bodies": [
+    {
+      "key": "test_sol",
+      "name": "Test Sol",
+      "localizationKey": "body.test_sol",
+      "type": "Star",
+      "radius": 1.0,
+      "isSelectable": true,
+      "hasSurface": false,
+      "soi": 5000.0,
+      "spin": {
+        "rotationPeriod": 600.0
+      }
+    },
+    {
+      "key": "test_alpha",
+      "name": "Alpha",
+      "localizationKey": "body.test_alpha",
+      "type": "Planet",
+      "parent": "test_sol",
+      "radius": 0.30,
+      "isSelectable": true,
+      "hasSurface": true,
+      "soi": 120.0,
+      "orbit": {
+        "semiMajorAxis": 500.0,
+        "period": 260.0,
+        "eccentricity": 0.80,
+        "inclinationDeg": 10.0,
+        "longitudeOfAscendingNodeDeg": 25.0,
+        "argumentOfPeriapsisDeg": 45.0,
+        "meanAnomalyAtEpochDeg": 0.0
+      },
+      "spin": {
+        "rotationPeriod": 30.0
+      }
+    },
+    {
+      "key": "test_beta",
+      "name": "Beta",
+      "localizationKey": "body.test_beta",
+      "type": "Planet",
+      "parent": "test_sol",
+      "radius": 0.24,
+      "isSelectable": true,
+      "hasSurface": true,
+      "soi": 100.0,
+      "orbit": {
+        "semiMajorAxis": 320.0,
+        "period": 520.0,
+        "eccentricity": 0.48,
+        "inclinationDeg": 22.0,
+        "longitudeOfAscendingNodeDeg": 80.0,
+        "argumentOfPeriapsisDeg": 120.0,
+        "meanAnomalyAtEpochDeg": 140.0
+      },
+      "spin": {
+        "rotationPeriod": 28.0
+      }
+    },
+    {
+      "key": "test_gamma",
+      "name": "Gamma",
+      "localizationKey": "body.test_gamma",
+      "type": "Planet",
+      "parent": "test_sol",
+      "radius": 0.20,
+      "isSelectable": true,
+      "hasSurface": true,
+      "soi": 90.0,
+      "orbit": {
+        "semiMajorAxis": 470.0,
+        "period": 900.0,
+        "eccentricity": 0.4,
+        "inclinationDeg": 40.0,
+        "longitudeOfAscendingNodeDeg": 15.0,
+        "argumentOfPeriapsisDeg": 260.0,
+        "meanAnomalyAtEpochDeg": 260.0
+      },
+      "spin": {
+        "rotationPeriod": 20.0
+      }
+    },
+    {
+      "key": "test_moon_a",
+      "name": "Moon-A",
+      "localizationKey": "body.test_moon_a",
+      "type": "Moon",
+      "parent": "test_alpha",
+      "radius": 0.08,
+      "isSelectable": true,
+      "hasSurface": true,
+      "soi": 18.0,
+      "orbit": {
+        "semiMajorAxis": 26.0,
+        "period": 34.0,
+        "eccentricity": 0.5,
+        "inclinationDeg": 18.0,
+        "longitudeOfAscendingNodeDeg": 40.0,
+        "argumentOfPeriapsisDeg": 60.0,
+        "meanAnomalyAtEpochDeg": 30.0
+      },
+      "spin": {
+        "rotationPeriod": 18.0
+      }
+    },
+    {
+      "key": "test_moon_b",
+      "name": "Moon-B",
+      "localizationKey": "body.test_moon_b",
+      "type": "Moon",
+      "parent": "test_beta",
+      "radius": 0.06,
+      "isSelectable": true,
+      "hasSurface": true,
+      "soi": 14.0,
+      "orbit": {
+        "semiMajorAxis": 22.0,
+        "period": 28.0,
+        "eccentricity": 0.5,
+        "inclinationDeg": 55.0,
+        "longitudeOfAscendingNodeDeg": 210.0,
+        "argumentOfPeriapsisDeg": 15.0,
+        "meanAnomalyAtEpochDeg": 200.0
+      },
+      "spin": {
+        "rotationPeriod": 16.0
+      }
+    }
+  ],
+  "stations": [],
+  "ships": []
+}

@@ -21,23 +21,30 @@ namespace SpaceSim.Simulation.Ships
     ///     Frame: GlobalParent (star frame) for interplanetary, LocalParent for same-SOI transfers.
     ///
     ///     During Phase 1, SOI transitions trigger one of three cases:
-    ///
-    ///       Case 1 — Entered destination SOI:
-    ///         StartInsertionPhase() immediately (early arrival).
-    ///
-    ///       Case 2 — Entered intermediate SOI relevant to destination (inward, Global frame):
-    ///         ReframeRoute() — re-anchor into new body's local frame.
-    ///
-    ///       Case 3 — LEFT the active local frame body's SOI (outward):
-    ///         ReframeRouteOutward() — re-anchor into the parent/global frame.
+    ///       Case 1 — Entered destination SOI → StartInsertionPhase() immediately.
+    ///       Case 2 — Entered intermediate SOI (inward, Global frame) → ReframeRoute().
+    ///       Case 3 — Left the active local frame body's SOI (outward) → ReframeRouteOutward().
     ///
     ///   Phase 2 — Orbit Insertion (ShipState.InsertingIntoOrbit):
     ///     Smooth-step convergence to orbit radius in the arrival body's local frame.
     ///
+    /// Route Safety (Phase 21):
+    ///   RouteSafetyChecker validates the planned straight-line path against all large blocking
+    ///   bodies (Star/Planet/Moon/Asteroid) before committing any ship state change.
+    ///
+    /// Transfer Planning Lite (Phase 22):
+    ///   If the direct candidate route is unsafe, TransferPlannerLite tries up to
+    ///   TransferPlannerLite.CandidateCount approach geometry variants (different approach angles)
+    ///   for the same destination. The first safe variant is used. If all variants fail,
+    ///   StartRoute() returns false as before and the NPC ship waits until the next tick.
+    ///
+    ///   The destination body is always unchanged — no waypoints, no rerouting through
+    ///   intermediate bodies.
+    ///
     /// Anti-jitter:
     ///   _lastFrameSwitchTime prevents rapid back-and-forth reframes near SOI boundaries.
     ///   MinFrameSwitchInterval = 2.0 sim-seconds between frame switches per ship.
-    ///   Additionally, StartRoute() clears the cooldown for the new route.
+    ///   StartRoute() clears the cooldown for the new route.
     ///
     /// Pure C# — no UnityEngine dependency.
     /// </summary>
@@ -46,20 +53,18 @@ namespace SpaceSim.Simulation.Ships
         private readonly WorldRegistry _registry;
         private readonly List<EntityId> _trackedShips = new List<EntityId>();
 
-        // Per-ship cooldown: sim time of last frame switch.
         private readonly Dictionary<EntityId, double> _lastFrameSwitchTime =
             new Dictionary<EntityId, double>();
 
-        /// <summary>
-        /// Minimum sim-seconds between consecutive frame switches on the same ship.
-        /// Prevents ping-pong reframes when a ship oscillates near an SOI boundary.
-        /// </summary>
         private const double MinFrameSwitchInterval = 2.0;
 
         private const double DefaultOrbitRadius = 3.0;
         private const double DefaultOrbitPeriod = 12.0;
         private const double StationOrbitRadius = 0.5;
         private const double StationOrbitPeriod = 8.0;
+
+        private const double DegToRad = Math.PI / 180.0;
+        private const double RadToDeg = 180.0 / Math.PI;
 
         /// <summary>
         /// Multiplier applied to destination orbit radius to set the Phase 1 approach endpoint.
@@ -71,6 +76,32 @@ namespace SpaceSim.Simulation.Ships
         /// Set to 0 to skip insertion (instant orbit).
         /// </summary>
         public double OrbitInsertionDuration { get; set; } = 1.5;
+
+        // ---------------------------------------------------------------
+        // Route safety and planning (Phases 21 + 22)
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// When true, StartRoute() validates the planned path via RouteSafetyChecker and
+        /// tries multiple approach geometry variants via TransferPlannerLite before rejecting.
+        /// </summary>
+        public bool ImpactSafetyEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Extra clearance added to each body's radius for the safety check (Mm).
+        /// Near-grazing routes are rejected even if technically non-intersecting.
+        /// </summary>
+        public double ImpactSafetyMargin { get; set; } = 0.1;
+
+        /// <summary>
+        /// Number of sample points along the planned route segment for the collision check.
+        /// The check runs only when a new route is planned — not every frame.
+        /// </summary>
+        public int ImpactCheckSamples { get; set; } = 20;
+
+        // ---------------------------------------------------------------
+        // Events
+        // ---------------------------------------------------------------
 
         /// <summary>
         /// Fired when a ship completes arrival and enters orbit.
@@ -106,7 +137,19 @@ namespace SpaceSim.Simulation.Ships
 
         public int TrackedCount => _trackedShips.Count;
 
-        /// <summary>Begin a travel route for a ship.</summary>
+        /// <summary>
+        /// Begin a travel route for a ship.
+        ///
+        /// Phase 22 transfer planning:
+        ///   When ImpactSafetyEnabled is true, TransferPlannerLite tries up to
+        ///   <see cref="TransferPlannerLite.CandidateCount"/> approach geometry variants
+        ///   (rotating the approach angle around the destination in fixed steps).
+        ///   The first safe variant is committed. If all variants are unsafe, StartRoute()
+        ///   returns false without touching ship state. NPCShipScheduler retries next tick.
+        ///
+        ///   When ImpactSafetyEnabled is false, the direct approach is used without
+        ///   any safety checking (legacy behavior).
+        /// </summary>
         public bool StartRoute(
             EntityId shipId,
             EntityId destinationId,
@@ -155,13 +198,98 @@ namespace SpaceSim.Simulation.Ships
             EntityId localFrameBodyId;
             RouteFrame frame = DetermineRouteFrame(origin, arrivalBody, out localFrameBodyId);
 
+            // -----------------------------------------------------------
+            // Phase 22: Approach planning via TransferPlannerLite.
+            //
+            // The planner computes the ship's current world position (needed for
+            // both the approach angle calculation and the safety check), then tries
+            // up to CandidateCount approach geometry variants.
+            //
+            // The returned ApproachPlan carries the chosen angle and world position;
+            // BuildGlobalRoute / BuildLocalRoute use these instead of recomputing them.
+            // -----------------------------------------------------------
+
+            SimVec3 shipWorldPos = positionResolver != null
+                ? ComputeShipWorldPosition(ship, currentSimTime, positionResolver)
+                : SimVec3.Zero;
+
+            double approachRadius = destOrbitRadius * OrbitApproachMultiplier;
+            double estimatedArrivalTime = currentSimTime + travelDuration;
+
+            TransferPlannerLite.ApproachPlan plan;
+
+            if (ImpactSafetyEnabled && positionResolver != null)
+            {
+                plan = TransferPlannerLite.FindSafeApproach(
+                    shipWorldPos,
+                    arrivalParentId,
+                    approachRadius,
+                    currentSimTime,
+                    estimatedArrivalTime,
+                    _registry,
+                    positionResolver,
+                    origin.Id,
+                    ImpactSafetyMargin,
+                    ImpactCheckSamples);
+
+                if (!plan.Success)
+                {
+                    // All variants blocked — reject route, ship waits for next tick.
+                    OnNavEvent?.Invoke(shipId,
+                        $"[Nav] {ship.DisplayName}: all {TransferPlannerLite.CandidateCount} route variants" +
+                        $" unsafe to {arrivalBody.DisplayName}" +
+                        (plan.DirectRouteBlocker != null
+                            ? $" (blocked by {plan.DirectRouteBlocker})" : "") +
+                        ", waiting");
+                    return false;
+                }
+
+                if (plan.VariantIndex > 0)
+                {
+                    // Direct route was unsafe; an alternative was selected.
+                    OnNavEvent?.Invoke(shipId,
+                        $"[Nav] {ship.DisplayName}: direct route blocked by {plan.DirectRouteBlocker}," +
+                        $" using variant #{plan.VariantIndex} to {arrivalBody.DisplayName}" +
+                        $" (approach {plan.ApproachAngleDeg:F0}°)");
+                }
+            }
+            else
+            {
+                // Safety checking disabled — compute direct approach without validation.
+                plan = positionResolver != null
+                    ? TransferPlannerLite.DirectApproach(
+                        shipWorldPos, arrivalParentId, approachRadius,
+                        estimatedArrivalTime, positionResolver)
+                    : new TransferPlannerLite.ApproachPlan
+                    {
+                        Success = true,
+                        ApproachAngleDeg = 0.0,
+                        ApproachRadius = approachRadius,
+                        VariantIndex = 0
+                    };
+            }
+
+            // -----------------------------------------------------------
+            // Build the ShipRoute using the planned approach geometry.
+            // Both builders now accept the pre-computed approach angle and radius
+            // instead of recomputing them internally.
+            // -----------------------------------------------------------
+
             ShipRoute route = (frame == RouteFrame.LocalParent && positionResolver != null)
                 ? BuildLocalRoute(ship, origin, arrivalBody, localFrameBodyId,
-                    currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod, positionResolver)
+                    currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod,
+                    positionResolver, plan.ApproachAngleDeg, plan.ApproachRadius,
+                    shipWorldPos)
                 : BuildGlobalRoute(ship, origin, arrivalBody,
-                    currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod, positionResolver);
+                    currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod,
+                    positionResolver, plan.ApproachAngleDeg, plan.ApproachRadius,
+                    shipWorldPos);
 
             route.DestinationBodyId = destinationId;
+
+            // -----------------------------------------------------------
+            // Commit ship state — route is safe and fully built.
+            // -----------------------------------------------------------
 
             ship.ShipInfo.CurrentRoute = route;
             ship.ShipInfo.State = ShipState.Travelling;
@@ -171,7 +299,6 @@ namespace SpaceSim.Simulation.Ships
             ship.AttachmentMode = AttachmentMode.None;
             ship.Orbit = null;
 
-            // Reset frame-switch cooldown for the new route.
             _lastFrameSwitchTime.Remove(shipId);
 
             TrackShip(shipId);
@@ -202,18 +329,11 @@ namespace SpaceSim.Simulation.Ships
 
         /// <summary>
         /// Called by the coordinator when SOIResolver detects an SOI boundary crossing.
+        /// Receives both previousSOIBodyId and newSOIBodyId (Step 20).
         ///
-        /// Signature now receives BOTH previousSOIBodyId AND newSOIBodyId to support
-        /// both inward (entry) and outward (exit) frame switching.
-        ///
-        ///   Case 1 — newSOI == destination:
-        ///     Trigger orbit insertion immediately. Highest priority.
-        ///
-        ///   Case 2 — newSOI is an intermediate body, currently Global frame:
-        ///     Reframe inward (re-anchor into child body's local frame).
-        ///
-        ///   Case 3 — previousSOI was our active LocalParent frame body:
-        ///     Reframe outward (re-anchor into parent or global frame).
+        ///   Case 1 — newSOI == destination → early orbit insertion.
+        ///   Case 2 — newSOI is intermediate body, Global frame → inward reframe.
+        ///   Case 3 — previousSOI was the active LocalParent frame body → outward reframe.
         /// </summary>
         public void HandleSOITransition(
             EntityId shipId,
@@ -236,17 +356,13 @@ namespace SpaceSim.Simulation.Ships
 
             EntityId arrivalParentId = DetermineArrivalParent(destination);
 
-            // Anti-jitter: skip if we switched frames too recently on this ship.
             if (_lastFrameSwitchTime.TryGetValue(shipId, out double lastSwitch)
                 && simTime - lastSwitch < MinFrameSwitchInterval)
             {
                 return;
             }
 
-            // -----------------------------------------------------------
-            // Case 1: Entered the destination's SOI → early insertion.
-            //         Highest priority; returns immediately after handling.
-            // -----------------------------------------------------------
+            // Case 1: entered destination SOI.
             if (newSOIBodyId.IsValid && newSOIBodyId == arrivalParentId)
             {
                 double progress = route.GetProgress(simTime);
@@ -264,10 +380,7 @@ namespace SpaceSim.Simulation.Ships
                 return;
             }
 
-            // -----------------------------------------------------------
-            // Case 2: Entered an intermediate SOI relevant to the destination
-            //         while in Global frame → reframe inward.
-            // -----------------------------------------------------------
+            // Case 2: entered intermediate SOI, Global frame → inward reframe.
             if (newSOIBodyId.IsValid
                 && route.Frame == RouteFrame.Global
                 && IsBodyRelatedToDestination(newSOIBodyId, arrivalParentId))
@@ -281,14 +394,7 @@ namespace SpaceSim.Simulation.Ships
                 return;
             }
 
-            // -----------------------------------------------------------
-            // Case 3: Left the body whose SOI defined the active local frame
-            //         → reframe outward into the parent or global frame.
-            //
-            // Condition: LocalParent frame AND the exited body == current frame body.
-            // This ensures we only reframe outward when directly relevant;
-            // crossing some unrelated SOI boundary never triggers this branch.
-            // -----------------------------------------------------------
+            // Case 3: left the active local frame body's SOI → outward reframe.
             if (previousSOIBodyId.IsValid
                 && route.Frame == RouteFrame.LocalParent
                 && route.LocalFrameBodyId == previousSOIBodyId)
@@ -305,7 +411,7 @@ namespace SpaceSim.Simulation.Ships
         }
 
         // ---------------------------------------------------------------
-        // Inward reframe (Case 2 — from Step 19)
+        // Inward reframe (Case 2)
         // ---------------------------------------------------------------
 
         private void ReframeRoute(
@@ -343,7 +449,7 @@ namespace SpaceSim.Simulation.Ships
             route.ArrivalLocalPosition = approachWorld - frameBodyPosAtArrival;
             route.StartWorldPosition = currentWorldPos;
             route.ArrivalWorldPosition = approachWorld;
-            route.ArrivalOrbitPhaseDeg = NormalizeDeg(nearSideAngle * 180.0 / System.Math.PI);
+            route.ArrivalOrbitPhaseDeg = NormalizeDeg(nearSideAngle * RadToDeg);
             route.DepartureTime = simTime;
             route.TravelDuration = remainingDuration;
             ship.ShipInfo.OverrideWorldPosition = currentWorldPos;
@@ -355,25 +461,14 @@ namespace SpaceSim.Simulation.Ships
         }
 
         // ---------------------------------------------------------------
-        // Outward reframe (Case 3 — new in Step 20)
+        // Outward reframe (Case 3)
         // ---------------------------------------------------------------
 
-        /// <summary>
-        /// Re-anchor the remaining route outward into the parent or global frame.
-        ///
-        /// New frame selection:
-        ///   newSOIBodyId valid and not a star → LocalParent frame of newSOIBodyId.
-        ///   newSOIBodyId is a star, or invalid (no containing SOI) → Global frame.
-        ///
-        /// Current world position is captured exactly before any changes are made,
-        /// guaranteeing no visual discontinuity.
-        /// </summary>
         private void ReframeRouteOutward(
             CelestialBody ship, ShipRoute route,
             EntityId exitedBodyId, EntityId newSOIBodyId, EntityId arrivalParentId,
             double simTime, Func<EntityId, double, SimVec3> positionResolver)
         {
-            // Capture exact current position — must not change after this point.
             SimVec3 currentWorldPos = ship.ShipInfo.OverrideWorldPosition
                 ?? ComputeShipWorldPosition(ship, simTime, positionResolver);
 
@@ -381,7 +476,6 @@ namespace SpaceSim.Simulation.Ships
             double remainingDuration = System.Math.Max(route.TravelDuration * remainingFraction, 0.5);
             double estimatedArrivalTime = simTime + remainingDuration;
 
-            // Recompute approach point from current position toward destination.
             SimVec3 destWorldPosAtArrival = positionResolver(arrivalParentId, estimatedArrivalTime);
             SimVec3 fromDestToShip = currentWorldPos - destWorldPosAtArrival;
             if (fromDestToShip.Magnitude < 0.001)
@@ -396,7 +490,6 @@ namespace SpaceSim.Simulation.Ships
                 + new SimVec3(approachRadius * System.Math.Cos(nearSideAngle), 0.0,
                               approachRadius * System.Math.Sin(nearSideAngle));
 
-            // Determine whether the new frame is a planet's local frame or global.
             bool useGlobal = !newSOIBodyId.IsValid;
             if (!useGlobal)
             {
@@ -409,18 +502,16 @@ namespace SpaceSim.Simulation.Ships
 
             if (useGlobal)
             {
-                // Switch to global (world-coordinate) frame.
                 route.Frame = RouteFrame.Global;
                 route.LocalFrameBodyId = EntityId.None;
                 route.StartWorldPosition = currentWorldPos;
                 route.ArrivalWorldPosition = approachWorldAtArrival;
-                route.StartLocalPosition = SimVec3.Zero;   // unused in Global frame
+                route.StartLocalPosition = SimVec3.Zero;
                 route.ArrivalLocalPosition = SimVec3.Zero;
                 newFrameName = "global frame";
             }
             else
             {
-                // Switch to the new dominant body's local frame.
                 SimVec3 frameBodyPosNow = positionResolver(newSOIBodyId, simTime);
                 SimVec3 frameBodyPosAtArrival = positionResolver(newSOIBodyId, estimatedArrivalTime);
 
@@ -435,12 +526,9 @@ namespace SpaceSim.Simulation.Ships
                 newFrameName = $"{newFrameBody?.DisplayName ?? newSOIBodyId.ToString()} frame";
             }
 
-            // Reset timing so progress runs 0 → 1 over the remaining duration.
-            route.ArrivalOrbitPhaseDeg = NormalizeDeg(nearSideAngle * 180.0 / System.Math.PI);
+            route.ArrivalOrbitPhaseDeg = NormalizeDeg(nearSideAngle * RadToDeg);
             route.DepartureTime = simTime;
             route.TravelDuration = remainingDuration;
-
-            // Preserve exact position — no jump.
             ship.ShipInfo.OverrideWorldPosition = currentWorldPos;
 
             var exitedBody = _registry.GetCelestialBody(exitedBodyId);
@@ -450,13 +538,9 @@ namespace SpaceSim.Simulation.Ships
         }
 
         // ---------------------------------------------------------------
-        // Relevance filter (unchanged)
+        // Relevance filter
         // ---------------------------------------------------------------
 
-        /// <summary>
-        /// Returns true if soiBodyId is an ancestor of destBodyId in the hierarchy.
-        /// Stars are excluded — entering a stellar SOI is never an intermediate reframe.
-        /// </summary>
         private bool IsBodyRelatedToDestination(EntityId soiBodyId, EntityId destBodyId)
         {
             var soiBody = _registry.GetCelestialBody(soiBodyId);
@@ -474,7 +558,7 @@ namespace SpaceSim.Simulation.Ships
         }
 
         // ---------------------------------------------------------------
-        // Frame determination (unchanged)
+        // Frame determination
         // ---------------------------------------------------------------
 
         private RouteFrame DetermineRouteFrame(
@@ -544,26 +628,32 @@ namespace SpaceSim.Simulation.Ships
         }
 
         // ---------------------------------------------------------------
-        // Route builders (unchanged)
+        // Route builders — parameterized by pre-computed approach geometry
         // ---------------------------------------------------------------
 
+        /// <summary>
+        /// Build a global-frame route using a pre-computed approach angle and radius
+        /// from <see cref="TransferPlannerLite"/>. The approach world position is derived
+        /// from the destination position at arrival time + offset in the given direction.
+        /// </summary>
         private ShipRoute BuildGlobalRoute(
             CelestialBody ship, CelestialBody origin, CelestialBody destination,
             double currentSimTime, double travelDuration,
             double destOrbitRadius, double destOrbitPeriod,
-            Func<EntityId, double, SimVec3> positionResolver)
+            Func<EntityId, double, SimVec3> positionResolver,
+            double approachAngleDeg,   // from TransferPlannerLite
+            double approachRadius,     // from TransferPlannerLite
+            SimVec3 shipWorldPos)      // pre-computed by StartRoute
         {
-            SimVec3 startPos = ComputeShipWorldPosition(ship, currentSimTime, positionResolver);
             double arrivalTime = currentSimTime + travelDuration;
             SimVec3 destPosAtArrival = positionResolver != null
                 ? positionResolver(destination.Id, arrivalTime) : SimVec3.Zero;
 
-            SimVec3 dir = startPos - destPosAtArrival;
-            double angle = System.Math.Atan2(dir.Z, dir.X);
-            double approachRadius = destOrbitRadius * OrbitApproachMultiplier;
-            SimVec3 approachPos = destPosAtArrival
-                + new SimVec3(approachRadius * System.Math.Cos(angle), 0.0,
-                              approachRadius * System.Math.Sin(angle));
+            double approachAngleRad = approachAngleDeg * DegToRad;
+            SimVec3 approachPos = new SimVec3(
+                destPosAtArrival.X + approachRadius * System.Math.Cos(approachAngleRad),
+                destPosAtArrival.Y,
+                destPosAtArrival.Z + approachRadius * System.Math.Sin(approachAngleRad));
 
             return new ShipRoute
             {
@@ -573,35 +663,41 @@ namespace SpaceSim.Simulation.Ships
                 TravelDuration = travelDuration,
                 Frame = RouteFrame.Global,
                 LocalFrameBodyId = EntityId.None,
-                StartWorldPosition = startPos,
+                StartWorldPosition = shipWorldPos,
                 ArrivalWorldPosition = approachPos,
                 DestinationOrbitRadius = destOrbitRadius,
                 DestinationOrbitPeriod = destOrbitPeriod,
-                ArrivalOrbitPhaseDeg = NormalizeDeg(angle * 180.0 / System.Math.PI)
+                ArrivalOrbitPhaseDeg = NormalizeDeg(approachAngleDeg)
             };
         }
 
+        /// <summary>
+        /// Build a local-frame route using a pre-computed approach angle and radius
+        /// from <see cref="TransferPlannerLite"/>. The approach is computed in local
+        /// coordinates relative to the frame body at estimated arrival time.
+        /// </summary>
         private ShipRoute BuildLocalRoute(
             CelestialBody ship, CelestialBody origin, CelestialBody destination,
             EntityId localFrameBodyId,
             double currentSimTime, double travelDuration,
             double destOrbitRadius, double destOrbitPeriod,
-            Func<EntityId, double, SimVec3> positionResolver)
+            Func<EntityId, double, SimVec3> positionResolver,
+            double approachAngleDeg,   // from TransferPlannerLite
+            double approachRadius,     // from TransferPlannerLite
+            SimVec3 shipWorldPos)      // pre-computed by StartRoute
         {
             SimVec3 framePosNow = positionResolver(localFrameBodyId, currentSimTime);
-            SimVec3 shipWorldPos = ComputeShipWorldPosition(ship, currentSimTime, positionResolver);
             SimVec3 startLocal = shipWorldPos - framePosNow;
 
             double arrivalTime = currentSimTime + travelDuration;
             SimVec3 framePosAtArrival = positionResolver(localFrameBodyId, arrivalTime);
             SimVec3 destLocalAtArrival = positionResolver(destination.Id, arrivalTime) - framePosAtArrival;
 
-            SimVec3 dir = startLocal - destLocalAtArrival;
-            double angle = System.Math.Atan2(dir.Z, dir.X);
-            double approachRadius = destOrbitRadius * OrbitApproachMultiplier;
-            SimVec3 approachLocal = destLocalAtArrival
-                + new SimVec3(approachRadius * System.Math.Cos(angle), 0.0,
-                              approachRadius * System.Math.Sin(angle));
+            double approachAngleRad = approachAngleDeg * DegToRad;
+            SimVec3 approachLocal = new SimVec3(
+                destLocalAtArrival.X + approachRadius * System.Math.Cos(approachAngleRad),
+                destLocalAtArrival.Y,
+                destLocalAtArrival.Z + approachRadius * System.Math.Sin(approachAngleRad));
             SimVec3 approachWorld = framePosAtArrival + approachLocal;
 
             return new ShipRoute
@@ -618,7 +714,7 @@ namespace SpaceSim.Simulation.Ships
                 ArrivalLocalPosition = approachLocal,
                 DestinationOrbitRadius = destOrbitRadius,
                 DestinationOrbitPeriod = destOrbitPeriod,
-                ArrivalOrbitPhaseDeg = NormalizeDeg(angle * 180.0 / System.Math.PI)
+                ArrivalOrbitPhaseDeg = NormalizeDeg(approachAngleDeg)
             };
         }
 
@@ -681,7 +777,6 @@ namespace SpaceSim.Simulation.Ships
             var arrivalParent = _registry.GetCelestialBody(arrivalParentId);
             if (arrivalParent == null) { CompleteArrival(ship, route, currentSimTime, positionResolver); return; }
 
-            // Capture actual ship position at insertion start.
             SimVec3 shipWorldPos;
             if (route.Frame == RouteFrame.LocalParent && route.LocalFrameBodyId.IsValid)
             {
@@ -697,7 +792,7 @@ namespace SpaceSim.Simulation.Ships
             SimVec3 parentWorldPos = positionResolver(arrivalParentId, currentSimTime);
             SimVec3 shipLocalPos = shipWorldPos - parentWorldPos;
             double angleRad = System.Math.Atan2(shipLocalPos.Z, shipLocalPos.X);
-            double angleDeg = NormalizeDeg(angleRad * 180.0 / System.Math.PI);
+            double angleDeg = NormalizeDeg(angleRad * RadToDeg);
 
             route.InsertionPhaseActive = true;
             route.InsertionStartTime = currentSimTime;
@@ -747,11 +842,23 @@ namespace SpaceSim.Simulation.Ships
             Func<EntityId, double, SimVec3> positionResolver)
         {
             var destination = _registry.GetCelestialBody(route.DestinationBodyId);
-            if (destination == null) { ship.ShipInfo.State = ShipState.Idle; ship.ShipInfo.CurrentRoute = null; ship.ShipInfo.OverrideWorldPosition = null; return; }
+            if (destination == null)
+            {
+                ship.ShipInfo.State = ShipState.Idle;
+                ship.ShipInfo.CurrentRoute = null;
+                ship.ShipInfo.OverrideWorldPosition = null;
+                return;
+            }
 
             EntityId arrivalParentId = DetermineArrivalParent(destination);
             var arrivalParent = _registry.GetCelestialBody(arrivalParentId);
-            if (arrivalParent == null) { ship.ShipInfo.State = ShipState.Idle; ship.ShipInfo.CurrentRoute = null; ship.ShipInfo.OverrideWorldPosition = null; return; }
+            if (arrivalParent == null)
+            {
+                ship.ShipInfo.State = ShipState.Idle;
+                ship.ShipInfo.CurrentRoute = null;
+                ship.ShipInfo.OverrideWorldPosition = null;
+                return;
+            }
 
             ship.ParentId = arrivalParentId;
             arrivalParent.AddChildId(ship.Id);
@@ -775,7 +882,6 @@ namespace SpaceSim.Simulation.Ships
             ship.ShipInfo.OverrideWorldPosition = null;
             ship.ShipInfo.State = ShipState.Orbiting;
 
-            // Clean up cooldown entry for this ship.
             _lastFrameSwitchTime.Remove(ship.Id);
 
             OnNavEvent?.Invoke(ship.Id,

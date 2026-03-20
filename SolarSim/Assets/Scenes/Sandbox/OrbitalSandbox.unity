@@ -152,12 +152,17 @@ MonoBehaviour:
   cameraController: {fileID: 137804995}
   uiDocument: {fileID: 1837812490}
   starSystemDefinition: {fileID: 11400000, guid: 152fe9861eff72f429025f0ad47ecf5b, type: 2}
-  externalSystemFile: {fileID: 4900000, guid: 50249e285d956444e9e8cf2717b2c493, type: 3}
+  externalSystemFile: {fileID: 4900000, guid: 8fcb73da271c2d74b8aafdfe32ec48a0, type: 3}
   npcTravelSpeed: 10
   npcMinTravelDuration: 3
   npcIdleDelay: 3
   npcDockingWaitTime: 5
   dockingApproachDuration: 2
+  orbitInsertionDuration: 1.5
+  orbitApproachMultiplier: 2.5
+  routeSafetyEnabled: 1
+  routeSafetyMargin: 0.1
+  routeSafetyCheckSamples: 20
   demandEvalInterval: 5
 --- !u!4 &81263134
 Transform:
@@ -461,6 +466,11 @@ MonoBehaviour:
   orbitLineBaseWidth: 0.01
   orbitLineMaxMultiplier: 350
   orbitLineCurveSigma: 1.57
+  adaptiveOrbitLines: 1
+  orbitLineTolerance: 0.05
+  orbitLineMaxDepth: 7
+  orbitLineSeedSegments: 16
+  orbitLineFixedSegments: 128
 --- !u!1 &1162873945
 GameObject:
   m_ObjectHideFlags: 0
