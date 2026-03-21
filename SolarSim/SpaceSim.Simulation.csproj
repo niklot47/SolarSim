@@ -65,6 +65,7 @@
     <Compile Include="Assets\Scripts\Simulation\SOI\SOIResolver.cs" />
     <Compile Include="Assets\Scripts\Simulation\Economy\EconomyInitializer.cs" />
     <Compile Include="Assets\Scripts\Simulation\Economy\StationProductionSystem.cs" />
+    <Compile Include="Assets\Scripts\Simulation\Ships\ManeuverPlanner.cs" />
     <Compile Include="Assets\Scripts\Simulation\Core\SelectionService.cs" />
     <Compile Include="Assets\Scripts\Simulation\Core\WorldPositionResolver.cs" />
     <Compile Include="Assets\Scripts\Simulation\Economy\StationDemandEvaluator.cs" />

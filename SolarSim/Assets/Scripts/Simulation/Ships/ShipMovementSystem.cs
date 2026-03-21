@@ -28,18 +28,20 @@ namespace SpaceSim.Simulation.Ships
     ///   Phase 2 — Orbit Insertion (ShipState.InsertingIntoOrbit):
     ///     Smooth-step convergence to orbit radius in the arrival body's local frame.
     ///
+    /// Maneuver Planning (Phase 23, Iteration 2):
+    ///   ManeuverPlanner.Plan() is called before any route is committed.
+    ///   Iteration 2 adds phase-aware geometry scoring and best-candidate selection.
+    ///   Log messages updated to include score and distinguish delay reasons:
+    ///     - "[Nav] selected maneuver score X"         — route started, score visible.
+    ///     - "[Nav] using offset variant #N ..."       — rotated approach used.
+    ///     - "[Nav] poor alignment, searching better window" — waited for better geometry.
+    ///     - "[Nav] delayed departure by Y seconds"    — route blocked, future window found.
+    ///     - "[Nav] all maneuver plans failed"         — no window found at all.
+    ///   TransferPlannerLite is retained but no longer called from StartRoute().
+    ///
     /// Route Safety (Phase 21):
-    ///   RouteSafetyChecker validates the planned straight-line path against all large blocking
-    ///   bodies (Star/Planet/Moon/Asteroid) before committing any ship state change.
-    ///
-    /// Transfer Planning Lite (Phase 22):
-    ///   If the direct candidate route is unsafe, TransferPlannerLite tries up to
-    ///   TransferPlannerLite.CandidateCount approach geometry variants (different approach angles)
-    ///   for the same destination. The first safe variant is used. If all variants fail,
-    ///   StartRoute() returns false as before and the NPC ship waits until the next tick.
-    ///
-    ///   The destination body is always unchanged — no waypoints, no rerouting through
-    ///   intermediate bodies.
+    ///   RouteSafetyChecker validates each candidate's straight-line path.
+    ///   Called inside ManeuverPlanner — not directly in ShipMovementSystem.
     ///
     /// Anti-jitter:
     ///   _lastFrameSwitchTime prevents rapid back-and-forth reframes near SOI boundaries.
@@ -78,12 +80,12 @@ namespace SpaceSim.Simulation.Ships
         public double OrbitInsertionDuration { get; set; } = 1.5;
 
         // ---------------------------------------------------------------
-        // Route safety and planning (Phases 21 + 22)
+        // Route safety and planning (Phases 21 + 22 + 23)
         // ---------------------------------------------------------------
 
         /// <summary>
-        /// When true, StartRoute() validates the planned path via RouteSafetyChecker and
-        /// tries multiple approach geometry variants via TransferPlannerLite before rejecting.
+        /// When true, StartRoute() runs ManeuverPlanner which internally calls
+        /// RouteSafetyChecker for each candidate and probes delayed windows.
         /// </summary>
         public bool ImpactSafetyEnabled { get; set; } = true;
 
@@ -140,15 +142,14 @@ namespace SpaceSim.Simulation.Ships
         /// <summary>
         /// Begin a travel route for a ship.
         ///
-        /// Phase 22 transfer planning:
-        ///   When ImpactSafetyEnabled is true, TransferPlannerLite tries up to
-        ///   <see cref="TransferPlannerLite.CandidateCount"/> approach geometry variants
-        ///   (rotating the approach angle around the destination in fixed steps).
-        ///   The first safe variant is committed. If all variants are unsafe, StartRoute()
-        ///   returns false without touching ship state. NPCShipScheduler retries next tick.
+        /// Phase 23 Iteration 2 maneuver planning:
+        ///   ManeuverPlanner.Plan() scores all safe candidates (geometry alignment
+        ///   with target velocity) and selects the best across immediate and delayed
+        ///   windows. Ships may wait for a better aligned window even when an immediate
+        ///   route is available (ImmediateWasAvailable == true).
         ///
-        ///   When ImpactSafetyEnabled is false, the direct approach is used without
-        ///   any safety checking (legacy behavior).
+        ///   BuildGlobalRoute and BuildLocalRoute are unchanged — they receive the
+        ///   pre-computed approachAngleDeg and approachRadius from the ManeuverPlan.
         /// </summary>
         public bool StartRoute(
             EntityId shipId,
@@ -199,14 +200,14 @@ namespace SpaceSim.Simulation.Ships
             RouteFrame frame = DetermineRouteFrame(origin, arrivalBody, out localFrameBodyId);
 
             // -----------------------------------------------------------
-            // Phase 22: Approach planning via TransferPlannerLite.
+            // Phase 23 Iteration 2: ManeuverPlanner.Plan()
             //
-            // The planner computes the ship's current world position (needed for
-            // both the approach angle calculation and the safety check), then tries
-            // up to CandidateCount approach geometry variants.
+            // The planner evaluates ALL safe candidates across ALL windows,
+            // scores each by geometric alignment with the target's orbital velocity,
+            // and returns the best. See ManeuverPlanner for full algorithm details.
             //
-            // The returned ApproachPlan carries the chosen angle and world position;
-            // BuildGlobalRoute / BuildLocalRoute use these instead of recomputing them.
+            // BuildGlobalRoute / BuildLocalRoute receive plan.ApproachAngleDeg and
+            // plan.ApproachRadius — their signatures are unchanged from Phase 22.
             // -----------------------------------------------------------
 
             SimVec3 shipWorldPos = positionResolver != null
@@ -214,75 +215,137 @@ namespace SpaceSim.Simulation.Ships
                 : SimVec3.Zero;
 
             double approachRadius = destOrbitRadius * OrbitApproachMultiplier;
-            double estimatedArrivalTime = currentSimTime + travelDuration;
 
-            TransferPlannerLite.ApproachPlan plan;
+            ManeuverPlanner.ManeuverPlan mPlan;
 
             if (ImpactSafetyEnabled && positionResolver != null)
             {
-                plan = TransferPlannerLite.FindSafeApproach(
+                mPlan = ManeuverPlanner.Plan(
                     shipWorldPos,
                     arrivalParentId,
                     approachRadius,
                     currentSimTime,
-                    estimatedArrivalTime,
+                    travelDuration,
                     _registry,
                     positionResolver,
                     origin.Id,
                     ImpactSafetyMargin,
                     ImpactCheckSamples);
 
-                if (!plan.Success)
+                if (!mPlan.Success)
                 {
-                    // All variants blocked — reject route, ship waits for next tick.
-                    OnNavEvent?.Invoke(shipId,
-                        $"[Nav] {ship.DisplayName}: all {TransferPlannerLite.CandidateCount} route variants" +
-                        $" unsafe to {arrivalBody.DisplayName}" +
-                        (plan.DirectRouteBlocker != null
-                            ? $" (blocked by {plan.DirectRouteBlocker})" : "") +
-                        ", waiting");
+                    // -------------------------------------------------------
+                    // Failure path — log based on delay reason (Iteration 2).
+                    // -------------------------------------------------------
+                    if (mPlan.IsDelayed)
+                    {
+                        double waitSec = mPlan.DepartureTime - currentSimTime;
+
+                        if (mPlan.ImmediateWasAvailable)
+                        {
+                            // Immediate route existed but natural geometry is poor (ship chasing);
+                            // a significantly better window was found in the future.
+                            OnNavEvent?.Invoke(shipId,
+                                $"[Nav] {ship.DisplayName}: poor alignment (direct {mPlan.DirectScore:F2})," +
+                                $" searching better window to {arrivalBody.DisplayName}" +
+                                $" ~{waitSec:F0}s away");
+                        }
+                        else
+                        {
+                            // All immediate candidates were blocked; future window found.
+                            OnNavEvent?.Invoke(shipId,
+                                $"[Nav] {ship.DisplayName}: waiting for better window to" +
+                                $" {arrivalBody.DisplayName}" +
+                                (mPlan.DirectRouteBlocker != null
+                                    ? $" (blocked by {mPlan.DirectRouteBlocker})" : "") +
+                                $", delayed departure by {waitSec:F0}s");
+                        }
+                    }
+                    else
+                    {
+                        // No window at all.
+                        OnNavEvent?.Invoke(shipId,
+                            $"[Nav] {ship.DisplayName}: all maneuver plans failed to" +
+                            $" {arrivalBody.DisplayName}" +
+                            (mPlan.DirectRouteBlocker != null
+                                ? $" (blocked by {mPlan.DirectRouteBlocker})" : ""));
+                    }
                     return false;
                 }
 
-                if (plan.VariantIndex > 0)
+                // -------------------------------------------------------
+                // Success path — log strategy and score (Iteration 2).
+                // -------------------------------------------------------
+                if (mPlan.StrategyType == ManeuverPlanner.StrategyOffset)
                 {
-                    // Direct route was unsafe; an alternative was selected.
                     OnNavEvent?.Invoke(shipId,
-                        $"[Nav] {ship.DisplayName}: direct route blocked by {plan.DirectRouteBlocker}," +
-                        $" using variant #{plan.VariantIndex} to {arrivalBody.DisplayName}" +
-                        $" (approach {plan.ApproachAngleDeg:F0}°)");
+                        $"[Nav] {ship.DisplayName}: using offset variant #{mPlan.VariantIndex}" +
+                        $" to {arrivalBody.DisplayName}" +
+                        $" (approach {mPlan.ApproachAngleDeg:F0}°, score {mPlan.Score:F2}," +
+                        $" direct {mPlan.DirectScore:F2}" +
+                        (mPlan.DirectRouteBlocker != null
+                            ? $", blocked by {mPlan.DirectRouteBlocker}" : "") +
+                        ")");
+                }
+                else
+                {
+                    // Direct route — log both Score (chosen approach quality, always ~1.0)
+                    // and DirectScore (natural geometry, varies with orbital phase).
+                    OnNavEvent?.Invoke(shipId,
+                        $"[Nav] {ship.DisplayName}: selected maneuver score {mPlan.Score:F2}" +
+                        $" (direct {mPlan.DirectScore:F2})" +
+                        $" to {arrivalBody.DisplayName}");
                 }
             }
             else
             {
                 // Safety checking disabled — compute direct approach without validation.
-                plan = positionResolver != null
-                    ? TransferPlannerLite.DirectApproach(
-                        shipWorldPos, arrivalParentId, approachRadius,
-                        estimatedArrivalTime, positionResolver)
-                    : new TransferPlannerLite.ApproachPlan
+                if (positionResolver != null)
+                {
+                    double estimatedArrivalTime = currentSimTime + travelDuration;
+                    SimVec3 destWorldAtArrival = positionResolver(arrivalParentId, estimatedArrivalTime);
+                    SimVec3 dir = shipWorldPos - destWorldAtArrival;
+                    double angleRad = System.Math.Atan2(dir.Z, dir.X);
+                    mPlan = new ManeuverPlanner.ManeuverPlan
                     {
-                        Success = true,
-                        ApproachAngleDeg = 0.0,
-                        ApproachRadius = approachRadius,
-                        VariantIndex = 0
+                        Success          = true,
+                        DepartureTime    = currentSimTime,
+                        ApproachAngleDeg = angleRad * RadToDeg,
+                        ApproachRadius   = approachRadius,
+                        StrategyType     = ManeuverPlanner.StrategyDirect,
+                        VariantIndex     = 0,
+                        Score            = 0.0
                     };
+                }
+                else
+                {
+                    mPlan = new ManeuverPlanner.ManeuverPlan
+                    {
+                        Success          = true,
+                        DepartureTime    = currentSimTime,
+                        ApproachAngleDeg = 0.0,
+                        ApproachRadius   = approachRadius,
+                        StrategyType     = ManeuverPlanner.StrategyDirect,
+                        VariantIndex     = 0,
+                        Score            = 0.0
+                    };
+                }
             }
 
             // -----------------------------------------------------------
             // Build the ShipRoute using the planned approach geometry.
-            // Both builders now accept the pre-computed approach angle and radius
-            // instead of recomputing them internally.
+            // BuildGlobalRoute and BuildLocalRoute are unchanged — they accept
+            // pre-computed approachAngleDeg and approachRadius from the plan.
             // -----------------------------------------------------------
 
             ShipRoute route = (frame == RouteFrame.LocalParent && positionResolver != null)
                 ? BuildLocalRoute(ship, origin, arrivalBody, localFrameBodyId,
                     currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod,
-                    positionResolver, plan.ApproachAngleDeg, plan.ApproachRadius,
+                    positionResolver, mPlan.ApproachAngleDeg, mPlan.ApproachRadius,
                     shipWorldPos)
                 : BuildGlobalRoute(ship, origin, arrivalBody,
                     currentSimTime, travelDuration, destOrbitRadius, destOrbitPeriod,
-                    positionResolver, plan.ApproachAngleDeg, plan.ApproachRadius,
+                    positionResolver, mPlan.ApproachAngleDeg, mPlan.ApproachRadius,
                     shipWorldPos);
 
             route.DestinationBodyId = destinationId;
@@ -628,22 +691,18 @@ namespace SpaceSim.Simulation.Ships
         }
 
         // ---------------------------------------------------------------
-        // Route builders — parameterized by pre-computed approach geometry
+        // Route builders — unchanged from Phase 22 / Iteration 1.
+        // Accept pre-computed approachAngleDeg and approachRadius from ManeuverPlan.
         // ---------------------------------------------------------------
 
-        /// <summary>
-        /// Build a global-frame route using a pre-computed approach angle and radius
-        /// from <see cref="TransferPlannerLite"/>. The approach world position is derived
-        /// from the destination position at arrival time + offset in the given direction.
-        /// </summary>
         private ShipRoute BuildGlobalRoute(
             CelestialBody ship, CelestialBody origin, CelestialBody destination,
             double currentSimTime, double travelDuration,
             double destOrbitRadius, double destOrbitPeriod,
             Func<EntityId, double, SimVec3> positionResolver,
-            double approachAngleDeg,   // from TransferPlannerLite
-            double approachRadius,     // from TransferPlannerLite
-            SimVec3 shipWorldPos)      // pre-computed by StartRoute
+            double approachAngleDeg,
+            double approachRadius,
+            SimVec3 shipWorldPos)
         {
             double arrivalTime = currentSimTime + travelDuration;
             SimVec3 destPosAtArrival = positionResolver != null
@@ -671,20 +730,15 @@ namespace SpaceSim.Simulation.Ships
             };
         }
 
-        /// <summary>
-        /// Build a local-frame route using a pre-computed approach angle and radius
-        /// from <see cref="TransferPlannerLite"/>. The approach is computed in local
-        /// coordinates relative to the frame body at estimated arrival time.
-        /// </summary>
         private ShipRoute BuildLocalRoute(
             CelestialBody ship, CelestialBody origin, CelestialBody destination,
             EntityId localFrameBodyId,
             double currentSimTime, double travelDuration,
             double destOrbitRadius, double destOrbitPeriod,
             Func<EntityId, double, SimVec3> positionResolver,
-            double approachAngleDeg,   // from TransferPlannerLite
-            double approachRadius,     // from TransferPlannerLite
-            SimVec3 shipWorldPos)      // pre-computed by StartRoute
+            double approachAngleDeg,
+            double approachRadius,
+            SimVec3 shipWorldPos)
         {
             SimVec3 framePosNow = positionResolver(localFrameBodyId, currentSimTime);
             SimVec3 startLocal = shipWorldPos - framePosNow;

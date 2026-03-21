@@ -29,9 +29,10 @@ Key files:
 - `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — **full Keplerian orbit position**: elliptical, inclined, and circular; surface position from lat/lon
 - `Scripts/Simulation/Orbits/KeplerSolver.cs` — Newton-Raphson solver for Kepler's equation
 - `Scripts/Simulation/Orbits/OrbitSampler.cs` — adaptive orbit geometry sampling
-- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — SOI-aware travel with symmetric frame switching; phased orbit insertion; HandleSOITransition() receives both previousSOIBodyId and newSOIBodyId; per-ship anti-jitter cooldown; **Phase 21: RouteSafetyChecker integration; Phase 22: TransferPlannerLite integration — BuildGlobalRoute/BuildLocalRoute now accept pre-computed approach angle and radius**
-- `Scripts/Simulation/Ships/RouteSafetyChecker.cs` — **(Phase 21)** pure C# static helper; validates planned route segment against large blocking bodies; closest-point-on-segment + sampled points; no allocations
-- `Scripts/Simulation/Ships/TransferPlannerLite.cs` — **(Phase 22)** pure C# static helper; generates up to 10 approach angle variants (0°, ±30°, ±60°, ±90°, ±120°, +150°) for the same destination; tries each with RouteSafetyChecker; returns first safe ApproachPlan or reports failure
+- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — SOI-aware travel; phased orbit insertion; HandleSOITransition(); anti-jitter cooldown; **Phase 21: RouteSafetyChecker; Phase 22: TransferPlannerLite; Phase 23 Iter 1: ManeuverPlanner; Phase 23 Iter 2: scoring logs; Phase 23 Iter 3: logs now show score + direct, poor-alignment log uses DirectScore**
+- `Scripts/Simulation/Ships/RouteSafetyChecker.cs` — **(Phase 21)** pure C# static helper; validates planned route segment; closest-point-on-segment + sampled points; no allocations; called inside ManeuverPlanner
+- `Scripts/Simulation/Ships/TransferPlannerLite.cs` — **(Phase 22)** retained reference; superseded by ManeuverPlanner
+- `Scripts/Simulation/Ships/ManeuverPlanner.cs` — **(Phase 23 Iter 3)** pure C# static helper; evaluates ALL safe candidates across immediate + delayed windows; scores by alignment with target velocity; **Iteration 3 fix: adds DirectScore (candidate 0 alignment, [-1,+1]) alongside Score (best candidate, always ~1.0); delay decision now uses DirectScore so poor-geometry waiting actually fires**
 - `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing via TradeOpportunityResolver
 - `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution
 - `Scripts/Simulation/Docking/DockingSystem.cs` — docking lifecycle
@@ -51,7 +52,7 @@ Game domain entities and shared world state models. Key files: unchanged from St
 
 Key files:
 - `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point
-- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services; **Phase 21 inspector fields**: routeSafetyEnabled, routeSafetyMargin, routeSafetyCheckSamples (no changes in Phase 22)
+- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services; **Phase 21 inspector fields**: routeSafetyEnabled, routeSafetyMargin, routeSafetyCheckSamples (no changes in Phases 22–23)
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions to build data
 - `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — scene visuals, orbit lines via OrbitSampler
 - `Scripts/Rendering/Planets/CelestialBodyView.cs` — body visual representation
@@ -85,34 +86,53 @@ Unchanged.
 
 ------------------------------------------------------------------------
 
-## Route Planning and Safety Pipeline (Phases 21 + 22)
+## Route Planning and Safety Pipeline (Phases 21 + 22 + 23 Iter 2)
 
 ```
 ShipMovementSystem.StartRoute()
     ↓
 ComputeShipWorldPosition(ship, currentSimTime)
 approachRadius = destOrbitRadius × OrbitApproachMultiplier
-estimatedArrivalTime = currentSimTime + travelDuration
 
 if ImpactSafetyEnabled:
-    ── TransferPlannerLite.FindSafeApproach() ──────────────────────────
-    |  destWorldAtArrival = positionResolver(arrivalParentId, arrivalTime)
-    |  baseAngle = atan2(ship - dest)
-    |  for offset in [0°, +30°, -30°, +60°, -60°, +90°, -90°, +120°, -120°, +150°]:
-    |      candidateApproach = dest + approachRadius × direction(baseAngle + offset)
-    |      RouteSafetyChecker.IsSafe(shipPos, candidateApproach, ...)
-    |          for each Star/Planet/Moon/Asteroid:
-    |              PointToSegmentDistanceSq < (radius + margin)²?
-    |      → first safe: return ApproachPlan(angle, worldPos, variantIndex)
-    |  → all failed: return ApproachPlan(Success=false)
-    ──────────────────────────────────────────────────────────────────
-    if !Success: log + return false   (ship waits, scheduler retries)
-    if variantIndex > 0: log "direct blocked, using variant #N"
+    ── ManeuverPlanner.Plan() (Phase 23 Iter 2) ─────────────────────────
+    |
+    |  destPeriod = arrivalBody.Orbit.OrbitalPeriod (default 120)
+    |  windowInterval = clamp(destPeriod × 0.08, 5, 30)
+    |  velDt = clamp(destPeriod × 0.005, 0.1, 2.0)
+    |
+    |  Window 0 (immediate):
+    |    destVelDir = (destPos(t+velDt) - destPos(t)).normalized
+    |    for each offset [0°, ±30°, ±60°, ±90°, ±120°, +150°]:
+    |      approachPos = destPos(arrivalTime) + approachRadius × dir(baseAngle+offset)
+    |      RouteSafetyChecker.IsSafe(...)
+    |      if safe: score = dot(approachDir, destVelDir) - offsetPenalty
+    |    → bestImmediate (highest score among safe candidates)
+    |
+    |  Windows 1…4 (delayed, Δt = windowInterval):
+    |    same loop, body positions at futureDepTime
+    |    → bestDelayed (highest score across all windows)
+    |
+    |  Decision:
+    |    bestImm AND bestDel.score > bestImm.score + 0.5
+    |      → StrategyDelayed, ImmediateWasAvailable=true → return false
+    |    bestImm found
+    |      → StrategyDirect/Offset → return plan
+    |    bestDel found (no immediate)
+    |      → StrategyDelayed, ImmediateWasAvailable=false → return false
+    |    nothing → StrategyType=-1 → return false
+    ───────────────────────────────────────────────────────────────────────
+    if !Success:
+      IsDelayed + ImmediateWasAvailable → "poor alignment, searching better window"
+      IsDelayed (no immediate)          → "delayed departure by Y seconds"
+      else                              → "all maneuver plans failed"
+    if StrategyOffset  → "using offset variant #N (score X)"
+    if StrategyDirect  → "selected maneuver score X"
 else:
-    DirectApproach() — computes direct angle, no validation
+    Direct angle, no validation
 
 BuildGlobalRoute(approachAngleDeg, approachRadius, shipWorldPos)  or
-BuildLocalRoute(approachAngleDeg, approachRadius, shipWorldPos)
+BuildLocalRoute( approachAngleDeg, approachRadius, shipWorldPos)
     ↓
 commit ship state → ShipState.Travelling
 ```
@@ -126,8 +146,12 @@ ShipMovementSystem.Update()
 DockingSystem.Update()
 NPCShipScheduler.Update()
     → ShipMovementSystem.StartRoute()
-        → TransferPlannerLite.FindSafeApproach()   ← Phase 22
-            → RouteSafetyChecker.IsSafe()          ← Phase 21 (called per candidate)
+        → ManeuverPlanner.Plan()                   ← Phase 23 Iter 2
+            EvaluateWindow() × 5 (1 imm + 4 del)
+                → ComputeVelocityDirection() × 5   (2 resolver calls each)
+                → RouteSafetyChecker.IsSafe() × ≤50 (per safe candidate)
+                → ScoreCandidate() × ≤50
+            → Decision → ManeuverPlan
         → Build route with chosen approach geometry
 StationProductionSystem.Update()
 [Periodic] StationDemandEvaluator + TradeOpportunityResolver
@@ -153,31 +177,16 @@ SOIResolver.UpdateAllShips()
 Completed:
 1. Impact / Collision Check Foundation ✓ (Phase 21)
 2. Transfer Planning Lite ✓ (Phase 22)
+3. Maneuver Planning Foundation ✓ (Phase 23, Iterations 1 + 2)
 
-### New Direction
+### Phase 24 — Burn Windows / Phase Alignment
 
-3. Maneuver Planning Foundation
-   - generalized transfer planning
-   - departure timing control
-   - strategy selection (not fixed geometry)
+- Store planned departure time on ShipInfo when StrategyDelayed is returned.
+- NPCShipScheduler holds ship until planned departure — no blind retry loop.
+- ManeuverPlanner extended: phase-angle heuristic to estimate time-to-favorable-window.
+- Ships visibly wait for windows then depart intentionally.
 
-4. Burn Windows / Phase Alignment
-   - phase-based departure
-   - scheduler-aware waiting behavior
-
-5. Patched Conics Full
-   - explicit trajectory segments per SOI
-   - physically consistent transitions
-
-6. Delta-v / Energy Model
-   - maneuver cost
-   - route comparison
-
-7. Hohmann Helper (Optional)
-   - baseline estimator for simple cases
-   - not core system
-
-8. Advanced Transfers
-   - intercept trajectories
-   - moving targets
-   - non-coplanar transfers
+### Phase 25 — Patched Conics Full
+### Phase 26 — Delta-v / Energy Model
+### Phase 27 — Hohmann Helper (Optional)
+### Phase 28 — Advanced Transfers (Lambert-lite / Intercept)
