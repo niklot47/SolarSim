@@ -28,16 +28,13 @@ namespace SpaceSim.Simulation.Ships
     ///   Phase 2 — Orbit Insertion (ShipState.InsertingIntoOrbit):
     ///     Smooth-step convergence to orbit radius in the arrival body's local frame.
     ///
-    /// Maneuver Planning (Phase 23, Iteration 2):
+    /// Maneuver Planning (Phase 23, Iteration 3 + bugfix):
     ///   ManeuverPlanner.Plan() is called before any route is committed.
-    ///   Iteration 2 adds phase-aware geometry scoring and best-candidate selection.
-    ///   Log messages updated to include score and distinguish delay reasons:
-    ///     - "[Nav] selected maneuver score X"         — route started, score visible.
-    ///     - "[Nav] using offset variant #N ..."       — rotated approach used.
-    ///     - "[Nav] poor alignment, searching better window" — waited for better geometry.
-    ///     - "[Nav] delayed departure by Y seconds"    — route blocked, future window found.
-    ///     - "[Nav] all maneuver plans failed"         — no window found at all.
-    ///   TransferPlannerLite is retained but no longer called from StartRoute().
+    ///   Bugfix: "poor alignment" log now shows ImmediateDirectScore (the score that
+    ///   actually triggered the delay decision), not DirectScore (which in that context
+    ///   belongs to the delayed plan and can be a higher, misleading number).
+    ///   Bugfix: PlannedDepartureTime is stored on ShipInfo when a delayed window is
+    ///   returned; NPCShipScheduler reads this to avoid retry spam until the window opens.
     ///
     /// Route Safety (Phase 21):
     ///   RouteSafetyChecker validates each candidate's straight-line path.
@@ -142,14 +139,12 @@ namespace SpaceSim.Simulation.Ships
         /// <summary>
         /// Begin a travel route for a ship.
         ///
-        /// Phase 23 Iteration 2 maneuver planning:
-        ///   ManeuverPlanner.Plan() scores all safe candidates (geometry alignment
-        ///   with target velocity) and selects the best across immediate and delayed
-        ///   windows. Ships may wait for a better aligned window even when an immediate
-        ///   route is available (ImmediateWasAvailable == true).
+        /// On delayed plan (StrategyDelayed):
+        ///   ship.ShipInfo.PlannedDepartureTime is set to mPlan.DepartureTime so
+        ///   NPCShipScheduler can skip retries until the window opens.
         ///
-        ///   BuildGlobalRoute and BuildLocalRoute are unchanged — they receive the
-        ///   pre-computed approachAngleDeg and approachRadius from the ManeuverPlan.
+        /// On success:
+        ///   ship.ShipInfo.PlannedDepartureTime is cleared (set to 0.0).
         /// </summary>
         public bool StartRoute(
             EntityId shipId,
@@ -199,17 +194,6 @@ namespace SpaceSim.Simulation.Ships
             EntityId localFrameBodyId;
             RouteFrame frame = DetermineRouteFrame(origin, arrivalBody, out localFrameBodyId);
 
-            // -----------------------------------------------------------
-            // Phase 23 Iteration 2: ManeuverPlanner.Plan()
-            //
-            // The planner evaluates ALL safe candidates across ALL windows,
-            // scores each by geometric alignment with the target's orbital velocity,
-            // and returns the best. See ManeuverPlanner for full algorithm details.
-            //
-            // BuildGlobalRoute / BuildLocalRoute receive plan.ApproachAngleDeg and
-            // plan.ApproachRadius — their signatures are unchanged from Phase 22.
-            // -----------------------------------------------------------
-
             SimVec3 shipWorldPos = positionResolver != null
                 ? ComputeShipWorldPosition(ship, currentSimTime, positionResolver)
                 : SimVec3.Zero;
@@ -235,24 +219,34 @@ namespace SpaceSim.Simulation.Ships
                 if (!mPlan.Success)
                 {
                     // -------------------------------------------------------
-                    // Failure path — log based on delay reason (Iteration 2).
+                    // Failure path — store planned departure time and log.
                     // -------------------------------------------------------
+
+                    // Store the planned window time so NPCShipScheduler can avoid
+                    // calling StartRoute() again until the window actually opens.
+                    // For non-delayed failures (all windows blocked) DepartureTime == currentSimTime,
+                    // so we only store it when a real future window exists.
+                    if (mPlan.IsDelayed)
+                    {
+                        ship.ShipInfo.PlannedDepartureTime = mPlan.DepartureTime;
+                    }
+
                     if (mPlan.IsDelayed)
                     {
                         double waitSec = mPlan.DepartureTime - currentSimTime;
 
                         if (mPlan.ImmediateWasAvailable)
                         {
-                            // Immediate route existed but natural geometry is poor (ship chasing);
-                            // a significantly better window was found in the future.
+                            // Bug 1 fix: use ImmediateDirectScore (the immediate window's score
+                            // that triggered the delay) rather than DirectScore (the delayed
+                            // window's score, which is higher and would be misleading here).
                             OnNavEvent?.Invoke(shipId,
-                                $"[Nav] {ship.DisplayName}: poor alignment (direct {mPlan.DirectScore:F2})," +
+                                $"[Nav] {ship.DisplayName}: poor alignment (direct {mPlan.ImmediateDirectScore:F2})," +
                                 $" searching better window to {arrivalBody.DisplayName}" +
                                 $" ~{waitSec:F0}s away");
                         }
                         else
                         {
-                            // All immediate candidates were blocked; future window found.
                             OnNavEvent?.Invoke(shipId,
                                 $"[Nav] {ship.DisplayName}: waiting for better window to" +
                                 $" {arrivalBody.DisplayName}" +
@@ -263,7 +257,6 @@ namespace SpaceSim.Simulation.Ships
                     }
                     else
                     {
-                        // No window at all.
                         OnNavEvent?.Invoke(shipId,
                             $"[Nav] {ship.DisplayName}: all maneuver plans failed to" +
                             $" {arrivalBody.DisplayName}" +
@@ -274,8 +267,10 @@ namespace SpaceSim.Simulation.Ships
                 }
 
                 // -------------------------------------------------------
-                // Success path — log strategy and score (Iteration 2).
+                // Success path — clear planned departure time and log.
                 // -------------------------------------------------------
+                ship.ShipInfo.PlannedDepartureTime = 0.0;
+
                 if (mPlan.StrategyType == ManeuverPlanner.StrategyOffset)
                 {
                     OnNavEvent?.Invoke(shipId,
@@ -289,8 +284,6 @@ namespace SpaceSim.Simulation.Ships
                 }
                 else
                 {
-                    // Direct route — log both Score (chosen approach quality, always ~1.0)
-                    // and DirectScore (natural geometry, varies with orbital phase).
                     OnNavEvent?.Invoke(shipId,
                         $"[Nav] {ship.DisplayName}: selected maneuver score {mPlan.Score:F2}" +
                         $" (direct {mPlan.DirectScore:F2})" +
@@ -330,12 +323,11 @@ namespace SpaceSim.Simulation.Ships
                         Score            = 0.0
                     };
                 }
+                ship.ShipInfo.PlannedDepartureTime = 0.0;
             }
 
             // -----------------------------------------------------------
             // Build the ShipRoute using the planned approach geometry.
-            // BuildGlobalRoute and BuildLocalRoute are unchanged — they accept
-            // pre-computed approachAngleDeg and approachRadius from the plan.
             // -----------------------------------------------------------
 
             ShipRoute route = (frame == RouteFrame.LocalParent && positionResolver != null)
@@ -691,8 +683,8 @@ namespace SpaceSim.Simulation.Ships
         }
 
         // ---------------------------------------------------------------
-        // Route builders — unchanged from Phase 22 / Iteration 1.
-        // Accept pre-computed approachAngleDeg and approachRadius from ManeuverPlan.
+        // Route builders — accept pre-computed approachAngleDeg and approachRadius
+        // from ManeuverPlan (unchanged from Phase 22 / Iteration 1).
         // ---------------------------------------------------------------
 
         private ShipRoute BuildGlobalRoute(

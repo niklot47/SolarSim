@@ -27,8 +27,13 @@ namespace SpaceSim.Simulation.Ships
     ///   GoingToSource → (dock at source) → LoadingAtSource → GoingToDestination →
     ///   (dock at destination) → UnloadingAtDestination → job cleared → new job
     ///
-    /// When trader is already docked at source when job is assigned:
-    ///   Cargo loaded immediately, phase set to GoingToDestination, ship flies to destination.
+    /// Bug 2 fix (retry spam):
+    ///   When StartRoute() returns false because ManeuverPlanner found a delayed window,
+    ///   ship.ShipInfo.PlannedDepartureTime is set to the future window time by
+    ///   ShipMovementSystem. NPCShipScheduler now checks this before calling StartRoute
+    ///   and skips until that time is reached. Additionally, _arrivalTimes is reset when
+    ///   StartRoute returns false, so the IdleDelay acts as a minimum retry interval
+    ///   even for routes that have no planned window (all-failed case).
     /// </summary>
     public class NPCShipScheduler
     {
@@ -315,59 +320,45 @@ namespace SpaceSim.Simulation.Ships
             else
             {
                 // No active job — only unload cargo to free up hold.
-                // Do NOT load random resources — wait for a proper trade job.
                 _cargoTransfer.UnloadAll(ship.Id, stationId);
             }
         }
 
         /// <summary>
         /// Perform targeted cargo operations based on the trader's current job phase.
-        /// Only LoadingAtSource and UnloadingAtDestination are valid phases for docked cargo ops.
-        /// Validates that the ship is at the correct station for the current phase.
-        /// Other phases while docked indicate a logic error — just unload and clear job.
         /// </summary>
         private void PerformTradeJobCargoOps(CelestialBody ship, EntityId stationId, TraderJob job)
         {
             if (job.Phase == TraderJobPhase.LoadingAtSource)
             {
-                // Verify we are actually at the source station.
                 if (stationId != job.SourceStationId)
                 {
-                    // Wrong station for loading — clear the job, unload, let scheduler pick new job.
                     _cargoTransfer.UnloadAll(ship.Id, stationId);
                     ship.ShipInfo.CurrentTradeJob = null;
                     return;
                 }
 
-                // At source station: unload any irrelevant cargo first, then load target resource.
                 _cargoTransfer.UnloadAll(ship.Id, stationId);
                 _cargoTransfer.LoadFromStation(ship.Id, stationId, job.Resource, ship.ShipInfo.Cargo.FreeSpace);
 
-                // Advance to delivery phase.
                 job.Phase = TraderJobPhase.GoingToDestination;
             }
             else if (job.Phase == TraderJobPhase.UnloadingAtDestination)
             {
-                // Verify we are actually at the destination station.
                 if (stationId != job.DestinationStationId)
                 {
-                    // Wrong station for unloading — clear the job, unload.
                     _cargoTransfer.UnloadAll(ship.Id, stationId);
                     ship.ShipInfo.CurrentTradeJob = null;
                     return;
                 }
 
-                // At destination station: unload the target resource, then unload everything else.
                 _cargoTransfer.UnloadToStation(ship.Id, stationId, job.Resource, ship.ShipInfo.Cargo.GetAmount(job.Resource));
                 _cargoTransfer.UnloadAll(ship.Id, stationId);
 
-                // Job complete — clear it.
                 ship.ShipInfo.CurrentTradeJob = null;
             }
             else
             {
-                // GoingToSource or GoingToDestination while docked — unexpected.
-                // Just unload and clear the job so we can get a fresh assignment.
                 _cargoTransfer.UnloadAll(ship.Id, stationId);
                 ship.ShipInfo.CurrentTradeJob = null;
             }
@@ -375,10 +366,14 @@ namespace SpaceSim.Simulation.Ships
 
         /// <summary>
         /// Ship just undocked — schedule a new route immediately (skip idle delay).
-        /// Traders use trade job to determine next destination.
+        /// Respects PlannedDepartureTime so departure doesn't happen before the window opens.
         /// </summary>
         private void ScheduleDepartureFromStation(CelestialBody ship, double simTime)
         {
+            // Bug 2 fix: if ManeuverPlanner found a delayed window, wait for it.
+            if (ship.ShipInfo.PlannedDepartureTime > 0.0 && simTime < ship.ShipInfo.PlannedDepartureTime)
+                return;
+
             EntityId destination = PickDestination(ship);
             if (!destination.IsValid)
                 return;
@@ -397,10 +392,23 @@ namespace SpaceSim.Simulation.Ships
                 _pendingSurfaceDock.Remove(ship.Id);
                 OnRouteScheduled?.Invoke(ship.Id);
             }
+            else
+            {
+                // Route planning failed (window not yet open or all blocked).
+                // Reset _arrivalTimes so the idle delay acts as a minimum retry interval
+                // for the all-blocked case (PlannedDepartureTime handles the delayed case).
+                _arrivalTimes[ship.Id] = simTime;
+            }
         }
 
         private void ScheduleNewRouteIfReady(CelestialBody ship, double simTime)
         {
+            // Bug 2 fix: skip entirely if ManeuverPlanner found a delayed window that
+            // hasn't opened yet. PlannedDepartureTime is set by ShipMovementSystem and
+            // cleared when a route successfully starts.
+            if (ship.ShipInfo.PlannedDepartureTime > 0.0 && simTime < ship.ShipInfo.PlannedDepartureTime)
+                return;
+
             if (!_arrivalTimes.ContainsKey(ship.Id))
                 _arrivalTimes[ship.Id] = simTime;
 
@@ -425,6 +433,13 @@ namespace SpaceSim.Simulation.Ships
                 _pendingDeparture.Remove(ship.Id);
                 _pendingSurfaceDock.Remove(ship.Id);
                 OnRouteScheduled?.Invoke(ship.Id);
+            }
+            else
+            {
+                // Route planning failed. Reset _arrivalTimes so the scheduler waits at
+                // least IdleDelay sim-s before retrying. This prevents a tight retry loop
+                // in the all-blocked case where PlannedDepartureTime is not set.
+                _arrivalTimes[ship.Id] = simTime;
             }
         }
 
@@ -522,18 +537,11 @@ namespace SpaceSim.Simulation.Ships
         /// Traders use demand-driven routing via TradeOpportunityResolver.
         /// If a trade job is active, follow it. Otherwise, find a new opportunity.
         /// Falls back to random station if no opportunities exist.
-        ///
-        /// When the trader is already docked at the source station of a new job:
-        ///  - Load cargo immediately via CargoTransferService.
-        ///  - Set phase to GoingToDestination so the ship flies directly to destination.
-        ///  - This prevents the phase mismatch bug where LoadingAtSource phase
-        ///    reaches a different station.
         /// </summary>
         private EntityId PickTraderDestination(CelestialBody ship)
         {
             var job = ship.ShipInfo.CurrentTradeJob;
 
-            // If we have an active job, follow its phases.
             if (job != null)
             {
                 if (job.Phase == TraderJobPhase.GoingToSource)
@@ -544,11 +552,9 @@ namespace SpaceSim.Simulation.Ships
                 {
                     return job.DestinationStationId;
                 }
-                // Other phases should not reach PickDestination — clear invalid job.
                 ship.ShipInfo.CurrentTradeJob = null;
             }
 
-            // No active job — try to find a new trade opportunity.
             if (_tradeResolver != null && _tradeResolver.Opportunities.Count > 0)
             {
                 var opportunity = _tradeResolver.FindBestForTrader(ship.Id, ship.ParentId);
@@ -557,14 +563,11 @@ namespace SpaceSim.Simulation.Ships
                     var opp = opportunity.Value;
                     var newJob = new TraderJob(opp.Resource, opp.SourceStationId, opp.DestinationStationId);
 
-                    // Check if trader is currently docked at the source station.
-                    // If so, load cargo immediately and skip directly to delivery.
                     bool isDockedAtSource = ship.ShipInfo.IsDocked
                         && ship.ShipInfo.DockedAtStationId == opp.SourceStationId;
 
                     if (isDockedAtSource && _cargoTransfer != null)
                     {
-                        // Load cargo now while still docked at source.
                         _cargoTransfer.UnloadAll(ship.Id, opp.SourceStationId);
                         double freeSpace = ship.ShipInfo.Cargo != null ? ship.ShipInfo.Cargo.FreeSpace : 100.0;
                         _cargoTransfer.LoadFromStation(ship.Id, opp.SourceStationId, opp.Resource, freeSpace);
@@ -576,7 +579,6 @@ namespace SpaceSim.Simulation.Ships
                         return newJob.DestinationStationId;
                     }
 
-                    // Not at source — normal flow: travel to source first.
                     newJob.Phase = TraderJobPhase.GoingToSource;
                     ship.ShipInfo.CurrentTradeJob = newJob;
 
@@ -585,13 +587,9 @@ namespace SpaceSim.Simulation.Ships
                 }
             }
 
-            // Fallback: random station selection (legacy behavior).
             return PickRandomStationDestination(ship);
         }
 
-        /// <summary>
-        /// Log trade route selection via callback.
-        /// </summary>
         private void LogTradeRoute(CelestialBody ship, TradeOpportunity opp)
         {
             var source = _registry.GetCelestialBody(opp.SourceStationId);
@@ -602,9 +600,6 @@ namespace SpaceSim.Simulation.Ships
                 $"{ship.DisplayName} selected trade: {opp.Resource} {sourceName} -> {destName} (score={opp.Score:F1})");
         }
 
-        /// <summary>
-        /// Fallback random station destination for traders when no trade opportunities exist.
-        /// </summary>
         private EntityId PickRandomStationDestination(CelestialBody ship)
         {
             EntityId excludeId = ship.ParentId;
@@ -684,7 +679,6 @@ namespace SpaceSim.Simulation.Ships
                     _destinationCandidates.Add(body.Id);
                 }
 
-                // Separate station list for trader preference.
                 if (body.BodyType == CelestialBodyType.Station &&
                     body.StationInfo != null &&
                     body.StationInfo.HasDocking)

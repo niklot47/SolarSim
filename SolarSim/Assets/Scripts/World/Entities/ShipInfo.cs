@@ -56,6 +56,17 @@ namespace SpaceSim.World.Entities
         /// </summary>
         public TraderJob CurrentTradeJob { get; set; }
 
+        // --- Maneuver Planning ---
+
+        /// <summary>
+        /// Planned future departure time set by ShipMovementSystem when ManeuverPlanner
+        /// returns a delayed window (StrategyDelayed). NPCShipScheduler skips calling
+        /// StartRoute() until this simulation time is reached, preventing retry spam.
+        /// 0.0 = no planned departure (depart as soon as ready).
+        /// Cleared automatically when a route successfully starts.
+        /// </summary>
+        public double PlannedDepartureTime { get; set; }
+
         // --- Docking fields ---
 
         /// <summary>
@@ -115,6 +126,7 @@ namespace SpaceSim.World.Entities
             CurrentSOIBodyId = EntityId.None;
             Cargo = null;
             CurrentTradeJob = null;
+            PlannedDepartureTime = 0.0;
             DockedAtStationId = EntityId.None;
             DockedPortId = -1;
             DockingStartTime = 0.0;
@@ -135,6 +147,7 @@ namespace SpaceSim.World.Entities
             CurrentSOIBodyId = EntityId.None;
             Cargo = null;
             CurrentTradeJob = null;
+            PlannedDepartureTime = 0.0;
             DockedAtStationId = EntityId.None;
             DockedPortId = -1;
             DockingStartTime = 0.0;
@@ -163,7 +176,8 @@ namespace SpaceSim.World.Entities
             string dockStr = IsDocked ? $" docked={DockedAtStationId}:{DockedPortId}" : "";
             string cargoStr = Cargo != null ? $" {Cargo}" : "";
             string jobStr = CurrentTradeJob != null ? $" {CurrentTradeJob}" : "";
-            return $"ShipInfo[{Role} {State} key={ShipKey} class={ShipClass}{routeStr}{soiStr}{dockStr}{cargoStr}{jobStr}]";
+            string planStr = PlannedDepartureTime > 0.0 ? $" plannedDep={PlannedDepartureTime:F1}" : "";
+            return $"ShipInfo[{Role} {State} key={ShipKey} class={ShipClass}{routeStr}{soiStr}{dockStr}{cargoStr}{jobStr}{planStr}]";
         }
     }
 }

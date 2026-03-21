@@ -11,6 +11,9 @@ namespace SpaceSim.Simulation.Ships
     /// Iteration 1: abstraction layer — immediate + delayed windows, first-safe selection.
     /// Iteration 2: geometry scoring (best-candidate selection), adaptive window interval.
     /// Iteration 3: fixes the "score always ~1.0" observation. Introduces DirectScore.
+    /// Iteration 3 bugfix: ImmediateDirectScore field added to ManeuverPlan so the
+    ///   ShipMovementSystem "poor alignment" log correctly shows the immediate window's
+    ///   DirectScore (which triggered the delay decision), not the delayed window's.
     ///
     /// ---------------------------------------------------------------------------
     /// Problem fixed in Iteration 3
@@ -48,6 +51,11 @@ namespace SpaceSim.Simulation.Ships
     ///     +1.0 = ship is directly ahead of target (intercepting — ideal).
     ///     This varies with orbital phase and is the meaningful diagnostic metric.
     ///     Computed unconditionally even when the direct route is safety-blocked.
+    ///
+    ///   ImmediateDirectScore (NEW in bugfix):
+    ///     DirectScore of the immediate window's best candidate (window 0).
+    ///     Populated only when ImmediateWasAvailable == true. Allows the caller
+    ///     to log the correct triggering score rather than the delayed plan's score.
     ///
     /// ---------------------------------------------------------------------------
     /// Delay decision (fixed in Iteration 3)
@@ -99,7 +107,7 @@ namespace SpaceSim.Simulation.Ships
 
         /// <summary>
         /// Output of <see cref="Plan"/>. Contains the chosen approach geometry,
-        /// the strategy used, and geometry quality metadata added in Iteration 2.
+        /// the strategy used, and geometry quality metadata.
         /// </summary>
         public struct ManeuverPlan
         {
@@ -146,10 +154,20 @@ namespace SpaceSim.Simulation.Ships
             /// Range: [-1.0, +1.0].
             ///   +1.0 = ship directly ahead of target's motion (ideal intercept).
             ///   -1.0 = ship directly behind target (chasing — poor geometry).
-            /// This is the meaningful orbital configuration metric; drives the
-            /// "wait for better window" decision. double.MinValue = not evaluated.
+            /// When IsDelayed == true, this is the DELAYED plan's DirectScore.
+            /// Use ImmediateDirectScore to retrieve the immediate window's DirectScore.
             /// </summary>
             public double DirectScore;
+
+            /// <summary>
+            /// DirectScore of the immediate window (window 0) best candidate.
+            /// Meaningful only when ImmediateWasAvailable == true.
+            /// This is the value that was compared against DirectScorePoorThreshold
+            /// to trigger the delay decision — log this for "poor alignment" messages
+            /// rather than DirectScore (which belongs to the delayed plan in that case).
+            /// double.MinValue when ImmediateWasAvailable == false.
+            /// </summary>
+            public double ImmediateDirectScore;
 
             /// <summary>
             /// True when StrategyType == StrategyDelayed.
@@ -339,6 +357,8 @@ namespace SpaceSim.Simulation.Ships
 
                 if (currentGeometryPoor && delayedSignificantlyBetter)
                 {
+                    // ImmediateDirectScore carries the immediate window's DirectScore so the
+                    // caller can log the value that actually triggered this delay decision.
                     return new ManeuverPlan
                     {
                         Success               = false,
@@ -350,6 +370,7 @@ namespace SpaceSim.Simulation.Ships
                         VariantIndex          = bestDelPlan.VariantIndex,
                         Score                 = bestDelPlan.Score,
                         DirectScore           = bestDelPlan.DirectScore,
+                        ImmediateDirectScore  = bestImmPlan.DirectScore,
                         IsDelayed             = true,
                         ImmediateWasAvailable = true,
                         DirectRouteBlocker    = directBlocker
@@ -357,7 +378,7 @@ namespace SpaceSim.Simulation.Ships
                 }
 
                 // Current geometry is acceptable (or no better delayed window exists).
-                // IsDelayed and ImmediateWasAvailable are already false from EvaluateWindow.
+                // ImmediateDirectScore is not needed when departing immediately.
                 return bestImmPlan;
             }
 
@@ -375,6 +396,7 @@ namespace SpaceSim.Simulation.Ships
                     VariantIndex          = bestDelPlan.VariantIndex,
                     Score                 = bestDelPlan.Score,
                     DirectScore           = bestDelPlan.DirectScore,
+                    ImmediateDirectScore  = double.MinValue,
                     IsDelayed             = true,
                     ImmediateWasAvailable = false,
                     DirectRouteBlocker    = directBlocker
@@ -391,6 +413,7 @@ namespace SpaceSim.Simulation.Ships
                 VariantIndex          = -1,
                 Score                 = double.MinValue,
                 DirectScore           = double.MinValue,
+                ImmediateDirectScore  = double.MinValue,
                 IsDelayed             = false,
                 ImmediateWasAvailable = false,
                 DirectRouteBlocker    = directBlocker
@@ -509,6 +532,7 @@ namespace SpaceSim.Simulation.Ships
                     VariantIndex          = -1,
                     Score                 = double.MinValue,
                     DirectScore           = directScore,
+                    ImmediateDirectScore  = double.MinValue,
                     IsDelayed             = false,
                     ImmediateWasAvailable = false,
                     DirectRouteBlocker    = directBlockerOut
@@ -526,6 +550,7 @@ namespace SpaceSim.Simulation.Ships
                 VariantIndex          = bestVariant,
                 Score                 = bestScore,
                 DirectScore           = directScore,
+                ImmediateDirectScore  = double.MinValue,
                 IsDelayed             = false,
                 ImmediateWasAvailable = false,
                 DirectRouteBlocker    = directBlockerOut
@@ -562,8 +587,6 @@ namespace SpaceSim.Simulation.Ships
             if (mag < 1e-10)
                 return -1.0; // degenerate case: approach point on body centre
 
-            // Normalise without allocating a new SimVec3 via Normalized (same result,
-            // but explicit here to show the intent clearly).
             SimVec3 approachDir = new SimVec3(rawDir.X / mag, rawDir.Y / mag, rawDir.Z / mag);
 
             double alignment    = SimVec3.Dot(approachDir, destVelocityDir);
@@ -634,6 +657,20 @@ namespace SpaceSim.Simulation.Ships
         {
             double raw = orbitalPeriod * VelDtFractionOfPeriod;
             return Math.Max(MinVelDt, Math.Min(MaxVelDt, raw));
+        }
+
+        // ---------------------------------------------------------------
+        // Public helper: window interval for external callers (Phase 24)
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Returns the window interval that would be used for the given destination body.
+        /// Useful for callers that want to know how long to wait before retrying.
+        /// </summary>
+        public static double GetWindowInterval(WorldRegistry registry, EntityId arrivalParentId)
+        {
+            double period = GetDestOrbitalPeriod(registry, arrivalParentId);
+            return ComputeWindowInterval(period);
         }
     }
 }
