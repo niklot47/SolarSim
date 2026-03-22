@@ -1,41 +1,100 @@
+using System.Collections.Generic;
 using SpaceSim.Shared.Identifiers;
 using SpaceSim.Shared.Math;
 
 namespace SpaceSim.World.Entities
 {
     /// <summary>
-    /// Determines how the ship's travel position is interpolated.
+    /// [DEPRECATED — Phase 26c] Legacy route frame enum.
+    /// Retained for ShipRoute field compatibility. Not used by segmented execution.
+    /// Segmented routes define reference frames per-segment via RouteSegment.ReferenceBodyId.
     /// </summary>
     public enum RouteFrame
     {
-        /// <summary>
-        /// Interpolation in absolute world coordinates.
-        /// Used for interplanetary travel (e.g. Terra -> Ares).
-        /// </summary>
         Global,
-
-        /// <summary>
-        /// Interpolation in local coordinates relative to a dominant parent body.
-        /// Used for local transfers (e.g. Terra &lt;-> Luna, ship &lt;-> moon).
-        /// Position each tick = parentWorldPos + lerp(localStart, localEnd, progress).
-        /// </summary>
         LocalParent
     }
 
     /// <summary>
     /// Route data for a ship travelling between two bodies.
-    /// Supports both global and local-frame travel.
     ///
-    /// Travel is two-phase:
-    ///   Phase 1 (Travelling): ship moves from origin to an approach point
-    ///     located OrbitApproachMultiplier × orbit radius away from the destination body.
-    ///   Phase 2 (InsertingIntoOrbit): ship moves from approach point to final orbit radius
-    ///     in the local frame of the arrival parent body (smooth, stable, body-tracking).
+    /// Phase 26c: Segmented routes are the ONLY active execution path.
+    ///
+    /// Primary fields (used by current navigation):
+    ///   Segments, CurrentSegmentIndex, UseSegmentedRoute — patched-conics model.
+    ///   OriginBodyId, DestinationBodyId — route endpoints.
+    ///   DepartureTime, TravelDuration — timing.
+    ///   StartWorldPosition, ArrivalWorldPosition — cached world coords at build time.
+    ///   DestinationOrbitRadius/Period, ArrivalOrbitPhaseDeg — orbit insertion data.
+    ///
+    /// Deprecated fields (retained for save/load compatibility, not used at runtime):
+    ///   Frame, LocalFrameBodyId — replaced by per-segment ReferenceBodyId.
+    ///   StartLocalPosition, ArrivalLocalPosition — replaced by per-segment local positions.
+    ///   InsertionPhase* fields — replaced by OrbitInsertion segment type.
     ///
     /// Pure C# — no Unity dependency.
     /// </summary>
     public class ShipRoute
     {
+        // ===============================================================
+        // Patched-Conics Segment Model (PRIMARY — Phase 26)
+        // ===============================================================
+
+        /// <summary>
+        /// Ordered list of route segments forming the patched-conics trajectory.
+        /// Built by RouteSegmentBuilder during StartRoute().
+        /// </summary>
+        public List<RouteSegment> Segments { get; set; } = new List<RouteSegment>();
+
+        /// <summary>
+        /// Index of the segment the ship is currently traversing.
+        /// Incremented when the current segment completes.
+        /// </summary>
+        public int CurrentSegmentIndex { get; set; }
+
+        /// <summary>
+        /// When true, ShipMovementSystem uses the Segments list for position interpolation.
+        /// Phase 26c: always true for new routes. False only if segments failed to build.
+        /// </summary>
+        public bool UseSegmentedRoute { get; set; }
+
+        /// <summary>Get the currently active segment, or null.</summary>
+        public RouteSegment CurrentSegment
+        {
+            get
+            {
+                if (Segments == null || Segments.Count == 0) return null;
+                if (CurrentSegmentIndex < 0 || CurrentSegmentIndex >= Segments.Count) return null;
+                return Segments[CurrentSegmentIndex];
+            }
+        }
+
+        /// <summary>Whether all segments have been completed.</summary>
+        public bool AllSegmentsComplete
+        {
+            get
+            {
+                if (Segments == null || Segments.Count == 0) return true;
+                return CurrentSegmentIndex >= Segments.Count;
+            }
+        }
+
+        /// <summary>Total number of segments in the route.</summary>
+        public int SegmentCount => Segments?.Count ?? 0;
+
+        /// <summary>
+        /// Advance to the next segment. Returns true if there is a next segment.
+        /// </summary>
+        public bool AdvanceSegment()
+        {
+            CurrentSegmentIndex++;
+            return CurrentSegmentIndex < (Segments?.Count ?? 0);
+        }
+
+        // ===============================================================
+        // Route endpoints and timing (used by both segmented and legacy)
+        // ===============================================================
+
         /// <summary>Body the ship departed from.</summary>
         public EntityId OriginBodyId { get; set; }
 
@@ -45,43 +104,14 @@ namespace SpaceSim.World.Entities
         /// <summary>Simulation time when the ship departed.</summary>
         public double DepartureTime { get; set; }
 
-        /// <summary>Duration of travel in simulation seconds.</summary>
+        /// <summary>Total duration of travel in simulation seconds.</summary>
         public double TravelDuration { get; set; }
 
-        // --- Frame selection ---
-
-        /// <summary>How travel position is interpolated.</summary>
-        public RouteFrame Frame { get; set; }
-
-        /// <summary>
-        /// For LocalParent frame: the dominant body whose world position
-        /// is added to the interpolated local offset each tick.
-        /// Ignored for Global frame.
-        /// </summary>
-        public EntityId LocalFrameBodyId { get; set; }
-
-        // --- Global frame data (Phase 1) ---
-
-        /// <summary>Ship's world position at departure.</summary>
+        /// <summary>Ship's world position at departure (cached at build time).</summary>
         public SimVec3 StartWorldPosition { get; set; }
 
-        /// <summary>
-        /// Approach point at end of Phase 1 (world coords).
-        /// Located OrbitApproachMultiplier × orbit radius from the destination body.
-        /// </summary>
+        /// <summary>Approach point world position (cached at build time).</summary>
         public SimVec3 ArrivalWorldPosition { get; set; }
-
-        // --- Local frame data (Phase 1) ---
-
-        /// <summary>Ship's position relative to LocalFrameBody at departure.</summary>
-        public SimVec3 StartLocalPosition { get; set; }
-
-        /// <summary>
-        /// Approach point in LocalFrameBody-relative coordinates at end of Phase 1.
-        /// </summary>
-        public SimVec3 ArrivalLocalPosition { get; set; }
-
-        // --- Destination orbit data ---
 
         /// <summary>Orbital radius the ship will use at the destination.</summary>
         public double DestinationOrbitRadius { get; set; }
@@ -89,64 +119,66 @@ namespace SpaceSim.World.Entities
         /// <summary>Orbital period the ship will use at the destination.</summary>
         public double DestinationOrbitPeriod { get; set; }
 
-        /// <summary>
-        /// Predicted approach angle (degrees) used as fallback if insertion phase
-        /// is skipped. Normally overridden by InsertionArrivalAngleDeg.
-        /// </summary>
+        /// <summary>Approach angle in degrees (used as fallback for orbit insertion).</summary>
         public double ArrivalOrbitPhaseDeg { get; set; }
 
-        // -------------------------------------------------------------------
-        // Phase 2: Orbit insertion approach
-        // Set during StartInsertionPhase when Phase 1 completes.
-        // -------------------------------------------------------------------
+        // ===============================================================
+        // DEPRECATED legacy fields (Phase 26c)
+        // Retained for save/load compatibility. Not used by segmented execution.
+        // Will be removed in a future cleanup pass.
+        // ===============================================================
 
-        /// <summary>Whether the insertion phase is currently active.</summary>
+        /// <summary>[DEPRECATED] Legacy frame type. Replaced by per-segment ReferenceBodyId.</summary>
+        public RouteFrame Frame { get; set; }
+
+        /// <summary>[DEPRECATED] Legacy local frame body. Replaced by per-segment ReferenceBodyId.</summary>
+        public EntityId LocalFrameBodyId { get; set; }
+
+        /// <summary>[DEPRECATED] Legacy local start position. Replaced by per-segment StartLocalPosition.</summary>
+        public SimVec3 StartLocalPosition { get; set; }
+
+        /// <summary>[DEPRECATED] Legacy local arrival position. Replaced by per-segment EndLocalPosition.</summary>
+        public SimVec3 ArrivalLocalPosition { get; set; }
+
+        /// <summary>[DEPRECATED] Legacy insertion phase flag. Replaced by OrbitInsertion segment.</summary>
         public bool InsertionPhaseActive { get; set; }
 
-        /// <summary>Simulation time when insertion phase started.</summary>
+        /// <summary>[DEPRECATED] Legacy insertion start time.</summary>
         public double InsertionStartTime { get; set; }
 
-        /// <summary>
-        /// Body used as reference frame during insertion.
-        /// Ship position = InsertionFrameBody world position + local interpolated offset.
-        /// This keeps the ship stable even as the target body moves.
-        /// </summary>
+        /// <summary>[DEPRECATED] Legacy insertion frame body.</summary>
         public EntityId InsertionFrameBodyId { get; set; }
 
-        /// <summary>
-        /// Ship's local position (relative to InsertionFrameBody) at start of insertion.
-        /// Equals approach point minus frame body position at insertion start time.
-        /// </summary>
+        /// <summary>[DEPRECATED] Legacy insertion start local position.</summary>
         public SimVec3 InsertionStartLocalPos { get; set; }
 
-        /// <summary>
-        /// Target local position (relative to InsertionFrameBody) at end of insertion.
-        /// This is the orbit insertion point: (orbitRadius * cos(angle), 0, orbitRadius * sin(angle)).
-        /// </summary>
+        /// <summary>[DEPRECATED] Legacy insertion target local position.</summary>
         public SimVec3 InsertionTargetLocalPos { get; set; }
 
-        /// <summary>
-        /// Actual approach angle in degrees, measured at insertion phase start.
-        /// More accurate than ArrivalOrbitPhaseDeg since it uses the real ship position.
-        /// Used to set MeanAnomalyAtEpoch when inserting into orbit.
-        /// </summary>
+        /// <summary>[DEPRECATED] Legacy insertion arrival angle.</summary>
         public double InsertionArrivalAngleDeg { get; set; }
 
         public ShipRoute()
         {
+            // Primary fields.
+            Segments = new List<RouteSegment>();
+            CurrentSegmentIndex = 0;
+            UseSegmentedRoute = false;
             OriginBodyId = EntityId.None;
             DestinationBodyId = EntityId.None;
             DepartureTime = 0.0;
             TravelDuration = 1.0;
-            Frame = RouteFrame.Global;
-            LocalFrameBodyId = EntityId.None;
             StartWorldPosition = SimVec3.Zero;
             ArrivalWorldPosition = SimVec3.Zero;
-            StartLocalPosition = SimVec3.Zero;
-            ArrivalLocalPosition = SimVec3.Zero;
             DestinationOrbitRadius = 3.0;
             DestinationOrbitPeriod = 12.0;
             ArrivalOrbitPhaseDeg = 0.0;
+
+            // Deprecated legacy fields.
+            Frame = RouteFrame.Global;
+            LocalFrameBodyId = EntityId.None;
+            StartLocalPosition = SimVec3.Zero;
+            ArrivalLocalPosition = SimVec3.Zero;
             InsertionPhaseActive = false;
             InsertionStartTime = 0.0;
             InsertionFrameBodyId = EntityId.None;
@@ -156,7 +188,8 @@ namespace SpaceSim.World.Entities
         }
 
         /// <summary>
-        /// Calculate travel progress (Phase 1) at given simulation time. Clamped to [0, 1].
+        /// [DEPRECATED] Legacy progress for single-route interpolation.
+        /// Use GetOverallSegmentProgress() for segmented routes.
         /// </summary>
         public double GetProgress(double currentTime)
         {
@@ -167,18 +200,35 @@ namespace SpaceSim.World.Entities
             return elapsed / TravelDuration;
         }
 
-        /// <summary>
-        /// Whether Phase 1 travel is complete at given simulation time.
-        /// </summary>
+        /// <summary>[DEPRECATED] Legacy completion check.</summary>
         public bool IsComplete(double currentTime)
         {
             return GetProgress(currentTime) >= 1.0;
         }
 
+        /// <summary>
+        /// Get overall route progress across all segments (0..1).
+        /// </summary>
+        public double GetOverallSegmentProgress(double currentTime)
+        {
+            if (!UseSegmentedRoute || Segments == null || Segments.Count == 0)
+                return GetProgress(currentTime);
+
+            int count = Segments.Count;
+            if (CurrentSegmentIndex >= count) return 1.0;
+
+            double completedFraction = (double)CurrentSegmentIndex / count;
+            double currentFraction = Segments[CurrentSegmentIndex].GetProgress(currentTime) / count;
+            return completedFraction + currentFraction;
+        }
+
         public override string ToString()
         {
-            string insertStr = InsertionPhaseActive ? " [inserting]" : "";
-            return $"Route[{Frame} {OriginBodyId}->{DestinationBodyId} dep={DepartureTime:F1} dur={TravelDuration:F1}{insertStr}]";
+            string segStr = UseSegmentedRoute
+                ? $" segments={SegmentCount} current={CurrentSegmentIndex}"
+                : "";
+            return $"Route[{OriginBodyId}->{DestinationBodyId} " +
+                   $"dep={DepartureTime:F1} dur={TravelDuration:F1}{segStr}]";
         }
     }
 }

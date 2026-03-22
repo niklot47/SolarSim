@@ -12,7 +12,7 @@ Long-term goals: orbital simulation sandbox, ships and stations, NPC traffic and
 
 ### 1. Simulation
 
-Pure game simulation logic. Time progression, orbital calculations, selection state, star system building, ship movement, NPC scheduling, world position resolution, SOI resolution, docking, economy/cargo transfer, station production, station demand evaluation, trade opportunity resolution.
+Pure game simulation logic. Time progression, orbital calculations, selection state, star system building, ship movement (segmented patched-conics), NPC scheduling, world position resolution, SOI resolution, docking, economy/cargo transfer, station production, station demand evaluation, trade opportunity resolution, route segment building.
 
 Rules:
 - Must NOT depend on UnityEngine
@@ -27,14 +27,15 @@ Key files:
 - `Scripts/Simulation/Core/StarSystemBuilder.cs` — builds runtime entities from pure build data
 - `Scripts/Simulation/Core/WorldPositionResolver.cs` — single source of truth for body world positions
 - `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — full Keplerian orbit position
-- `Scripts/Simulation/Orbits/KeplerSolver.cs` — Newton-Raphson solver for Kepler's equation
+- `Scripts/Simulation/Orbits/KeplerSolver.cs` — Newton-Raphson solver
 - `Scripts/Simulation/Orbits/OrbitSampler.cs` — adaptive orbit geometry sampling
-- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — SOI-aware travel; ManeuverPlanner integration; PlannedDepartureTime
+- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — **(Phase 26c)** segmented-only navigation; legacy reframe removed
 - `Scripts/Simulation/Ships/RouteSafetyChecker.cs` — route collision validation
 - `Scripts/Simulation/Ships/TransferPlannerLite.cs` — retained reference; superseded by ManeuverPlanner
 - `Scripts/Simulation/Ships/ManeuverPlanner.cs` — multi-window maneuver planning with geometry scoring
-- `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing; **Phase 25: persistent plan-based burn window behavior**
-- `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution
+- `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing; persistent burn windows
+- `Scripts/Simulation/Ships/RouteSegmentBuilder.cs` — builds patched-conics segment lists
+- `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution (debug/telemetry only for navigation)
 - `Scripts/Simulation/Docking/DockingSystem.cs` — docking lifecycle
 - `Scripts/Simulation/Economy/CargoTransferService.cs` — cargo transfer operations
 - `Scripts/Simulation/Economy/StationEconomyConfig.cs` — hardcoded initial resource loadouts
@@ -49,64 +50,37 @@ Key files:
 Game domain entities and shared world state models.
 
 Key files:
-- `Scripts/World/Entities/ShipInfo.cs` — includes `PlannedDepartureTime`, **`CurrentPlan` (PlannedManeuver)**, **`HasPlannedManeuver`**, **`ClearPlannedManeuver()`**
-- `Scripts/World/Entities/ShipState.cs` — **includes `WaitingForWindow` state (Phase 25)**
-- `Scripts/World/Entities/PlannedManeuver.cs` — **(Phase 25)** persistent maneuver plan: departure time, target, score, freshness check
-- (all other World files unchanged)
+- `Scripts/World/Entities/ShipInfo.cs` — PlannedDepartureTime, CurrentPlan, HasPlannedManeuver, ClearPlannedManeuver
+- `Scripts/World/Entities/ShipState.cs` — includes WaitingForWindow; InsertingIntoOrbit retained but no longer entered
+- `Scripts/World/Entities/PlannedManeuver.cs` — persistent maneuver plan
+- `Scripts/World/Entities/ShipRoute.cs` — **(Phase 26c)** segments primary, legacy fields marked [DEPRECATED]
+- `Scripts/World/Entities/SegmentType.cs` — enum for segment types
+- `Scripts/World/Entities/RouteSegment.cs` — one patched-conics segment
 
 ### 3. Rendering
 
-Key files:
-- `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point; holds DebugFilterProfile reference
-- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services; **Phase 25: connects OnPlanEvent callback**
-- `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions to build data
-- (all other Rendering files unchanged)
+- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services; still forwards SOI transitions (HandleSOITransition is no-op)
 
-### 4. UI
-
-Key files:
-- `Scripts/UI/Localization/UIStrings.cs` — **Phase 25: added `shipstate.WaitingForWindow`, `panel.details.planned_target`, `panel.details.planned_depart`, `modal.section.maneuver`**
-
-### 5. Data / Shared
+### 4. UI, 5. Data / Shared, Debug
 
 Unchanged.
-
-### Debug
-
-Key files:
-- `Scripts/Debug/BuiltInSnapshotProviders.cs` — **Phase 25: ShipSnapshotProvider tracks WaitingForWindow + InsertingIntoOrbit counts**
-- (all other Debug files unchanged)
-
-------------------------------------------------------------------------
-
-## Assembly Definitions
-
-| Assembly | noEngineReferences | Dependencies |
-|---|---|---|
-| SpaceSim.Shared | true | (none) |
-| SpaceSim.World | true | Shared |
-| SpaceSim.Simulation | true | Shared, World |
-| SpaceSim.Debug | false | Shared, Simulation, World |
-| SpaceSim.Data | false | Shared, World, Simulation |
-| SpaceSim.UI | false | Shared, World, Simulation |
-| SpaceSim.Rendering | false | Shared, World, Simulation, Debug, UI, Data, Unity.InputSystem |
 
 ------------------------------------------------------------------------
 
 ## Simulation Tick Order
 
 ```
-ShipMovementSystem.Update()
+ShipMovementSystem.Update()     ← segmented-only execution
 DockingSystem.Update()
 NPCShipScheduler.Update()       ← handles WaitingForWindow ships
 StationProductionSystem.Update()
 [Periodic] StationDemandEvaluator + TradeOpportunityResolver
-SOIResolver.UpdateAllShips()
+SOIResolver.UpdateAllShips()    ← HandleSOITransition is debug-only no-op
 ```
 
 ------------------------------------------------------------------------
 
-## Ship State Machine (Phase 25)
+## Ship State Machine (Phase 26c)
 
 ```
                     ┌──────────────────────┐
@@ -120,36 +94,20 @@ SOIResolver.UpdateAllShips()
               ▼            ▼                 │                 │
      ┌────────────┐  ┌──────────────────┐   │                 │
      │ Travelling │  │ WaitingForWindow │───┘ (plan invalid)  │
-     └─────┬──────┘  └────────┬─────────┘                     │
-           │                  │ (window arrives)              │
+     │ (segments) │  └────────┬─────────┘                     │
+     └─────┬──────┘           │ (window arrives)              │
            │                  ▼                               │
            │         ┌────────────┐                           │
            │         │ Travelling │                           │
+           │         │ (segments) │                           │
            │         └─────┬──────┘                           │
            ▼               ▼                                  │
      ┌──────────────────────┐                                 │
-     │ InsertingIntoOrbit   │─────────────────────────────────┘
+     │   Orbiting (arrived) │─────────────────────────────────┘
      └──────────────────────┘
+     Note: InsertingIntoOrbit state no longer entered.
+     Segmented routes handle insertion as their final OrbitInsertion segment.
 ```
-
-------------------------------------------------------------------------
-
-## Coding Standards
-
-- Code comments: English only
-- Project documentation: English
-- Integration instructions: Russian
-- UI strings: localization-ready via UIStrings (current: Russian)
-- Composition over inheritance, explicit dependencies, single responsibility
-- Inspector-serialized fields: use float (not double) for Unity compatibility
-
-### Debug logging standards (Step 24)
-
-- Every `GameDebug.Log()` call MUST include `source:` parameter with a registered tag name
-- New source tags must be added to `DebugFilterProfile.PopulateDefaults()` under the appropriate group
-- Error-severity logs must never depend on filter state — they always pass
-- Each feature delivery must include recommended filter settings for testing
-- Source tags use PascalCase, one or two words maximum
 
 ------------------------------------------------------------------------
 
@@ -158,11 +116,11 @@ SOIResolver.UpdateAllShips()
 Completed:
 1. Impact / Collision Check Foundation ✓ (Phase 21)
 2. Transfer Planning Lite ✓ (Phase 22)
-3. Maneuver Planning Foundation ✓ (Phase 23, Iterations 1–3 + Bugfixes)
+3. Maneuver Planning Foundation ✓ (Phase 23)
 4. Debug Log Filter System ✓ (Step 24)
 5. Burn Windows / Persistent Plans ✓ (Phase 25)
+6. Patched Conics Full ✓ (Phase 26a/b/c)
 
-### Phase 26 — Patched Conics Full
 ### Phase 27 — Delta-v / Energy Model
 ### Phase 28 — Hohmann Helper (Optional)
 ### Phase 29 — Advanced Transfers (Lambert-lite / Intercept)

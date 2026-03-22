@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 25 — Burn Windows / Phase Alignment (Persistent Plans, WaitingForWindow state).
+Last updated after: Phase 26c — Patched Conics Cleanup (legacy reframe removed, segmented-only navigation).
 
 ------------------------------------------------------------------------
 
@@ -14,96 +14,69 @@ Last updated after: Step 25 — Burn Windows / Phase Alignment (Persistent Plans
 - **Assembly Definitions** — 7 asmdef files enforcing layer boundaries
 
 ### Debug Infrastructure
-- **GameDebug** — static API: Log, CaptureSnapshot, ExportBundle, RunInvariantChecks, GetStatus, BuildBundle
-- **DebugEvent / RingBuffer** — 1000 events, 200 errors, 20 snapshots
-- **DebugSnapshot** — full world state capture via provider pattern
-- **IDebugSnapshotProvider** — interface for subsystem contributions
-- **BuiltInSnapshotProviders** — 5 providers: World, Ships (with WaitingForWindow count), Economy, Docking, SOI
+- **GameDebug**, **DebugFilter**, **DebugFilterProfile**, **DebugExportUtility**
+- **BuiltInSnapshotProviders** — 5 providers: World, Ships (segmentedRoutes/totalSegments/activeSegmented), Economy, Docking, SOI
 - **DebugInvariantChecker** — 7 automated checks
-- **DebugExportUtility** — JSON serialization + file export; filter state included in metadata
-- **DebugBundle** — complete export package with filter metadata
-
-### Debug Log Filter System (Step 24)
-- **DebugFilter** — pure C# runtime filter; checks category + source tag + severity; errors always pass
-- **DebugFilterProfile** — ScriptableObject with hierarchical filter groups
-- **DebugFilterGroup** — master toggle + list of DebugCategory names + child DebugTagToggle entries
-- **DebugFilterProfileEditor** — custom Inspector rendering groups as collapsible tree
-- **DebugFilterProfileCreator** — editor menu to create pre-configured default profile asset
 
 ### Orbital Sandbox
-- **CelestialBody** — domain entity with orbital/spin data, parent-child hierarchy, ShipInfo, StationInfo, SOIRadius
-- **StarSystem** — container for body ids
-- **WorldRegistry** — central entity lookup
-- **OrbitalPositionCalculator** — full Keplerian orbit position calculation
-- **KeplerSolver** — Newton-Raphson solver for Kepler's equation
-- **OrbitSampler** — adaptive subdivision and uniform fallback
-- **OrbitalMapRenderer** — scene visuals, orbit lines via OrbitSampler
-- **CelestialBodyView** — visual binding
+- Standard body hierarchy, Keplerian orbits, orbit rendering
 
-### Fully Symmetric SOI Navigation — Patched-Conics Lite (Steps 19 + 20)
+### Patched-Conics Navigation (Phase 26 — COMPLETE)
 
-Three-case SOI frame switching. `HandleSOITransition()` receives both `previousSOIBodyId` and `newSOIBodyId`.
-Anti-jitter via `_lastFrameSwitchTime` (MinFrameSwitchInterval = 2.0 sim-s).
+**Segmented routes are the ONLY active navigation path.**
 
-### Route Safety Check (Step 21)
+Data model (Phase 26a):
+- **SegmentType** — enum: LocalOrbitDeparture, SOIExit, HeliocentricTransfer, SOIEntry, LocalTransfer, OrbitInsertion
+- **RouteSegment** — one segment with reference body, timing, local positions
+- **ShipRoute.Segments** — ordered list, CurrentSegmentIndex, UseSegmentedRoute
+- **RouteSegmentBuilder** — builds segment chains (3 local, 5 interplanetary)
 
-**RouteSafetyChecker** — pure C# static helper. Validates route against large bodies. Called inside ManeuverPlanner.
+Movement execution (Phase 26b):
+- **ShipMovementSystem.StartRoute()** builds segments via RouteSegmentBuilder
+- **UpdateShipSegmented()** interpolates per-segment position each tick
+- **CompleteArrival()** reads orbit params from last OrbitInsertion segment
 
-### Transfer Planning Lite (Step 22)
+Cleanup (Phase 26c):
+- **Removed**: ReframeRoute(), ReframeRouteOutward(), UpdateShipLegacy(), StartInsertionPhaseLegacy(), UpdateInsertionPhaseLegacy(), CompleteArrivalLegacy(), DetermineRouteFrame(), BuildGlobalRoute(), BuildLocalRoute(), IsBodyRelatedToDestination(), _lastFrameSwitchTime dictionary, MinFrameSwitchInterval constant
+- **HandleSOITransition()** — retained for coordinator compatibility but is now an empty no-op (debug/telemetry only, no route mutation)
+- **OrbitInsertionDuration** — retained as public property (Inspector compatibility) but unused by segmented routes
+- **ShipRoute legacy fields** (Frame, LocalFrameBodyId, StartLocalPosition, ArrivalLocalPosition, InsertionPhase* fields) — marked [DEPRECATED], retained for save/load compatibility
+- **InsertingIntoOrbit ship state** — no longer entered by ShipMovementSystem; segmented routes handle insertion as their final segment
+- StartRoute() now rejects routes if segment build fails (no legacy fallback)
 
-**TransferPlannerLite** — retained for reference; superseded by ManeuverPlanner.
-
-### Maneuver Planning Foundation (Step 23, Iteration 3 + Bugfixes)
-
-**ManeuverPlanner** — pure C# static helper in Simulation.Ships.
-- ImmediateDirectScore, PlannedDepartureTime, retry spam guard — see Step 23 docs.
-
-### Burn Windows / Persistent Plans (Step 25)
-
-**PlannedManeuver** — pure C# data class in World.Entities. Persists maneuver decision on ShipInfo.
-Fields: PlannedDepartureTime, TargetBodyId, Score, DirectScore, EstimatedTravelDuration, CreatedAtSimTime.
-MaxPlanAge = 120 sim-s (stale plans are invalidated).
-
-**ShipState.WaitingForWindow** — new ship state. Ship has a PlannedManeuver and continues orbiting
-while waiting for the departure window to open. Visually identical to Orbiting (orbit line visible,
-standard position via WorldPositionResolver). Transitions to Travelling when window opens,
-or back to Orbiting if plan is invalidated.
-
-**ShipInfo.CurrentPlan** — nullable PlannedManeuver field. Non-null when ship is waiting for a window.
-**ShipInfo.HasPlannedManeuver** — convenience property checking CurrentPlan != null && target valid.
-**ShipInfo.ClearPlannedManeuver()** — clears plan + PlannedDepartureTime + reverts state if WaitingForWindow.
-
-#### NPCShipScheduler behavior change (Step 25)
-
-OLD (Phase 23 — stateless):
-- Every tick → compute route → ManeuverPlanner → if delayed, store PlannedDepartureTime → next tick retry
-
-NEW (Phase 25 — stateful):
-1. Ship picks destination → calls StartRoute() → ManeuverPlanner evaluates
-2. If immediate window → execute now, no plan stored
-3. If delayed window → ShipMovementSystem stores PlannedDepartureTime → NPCShipScheduler creates
-   PlannedManeuver on ShipInfo → ship enters WaitingForWindow state
-4. While WaitingForWindow: validate plan each tick (target exists, plan not stale)
-5. When PlannedDepartureTime reached → attempt StartRoute with stored target + duration
-6. If plan invalid → ClearPlannedManeuver(), revert to Orbiting, reschedule after idle delay
-
-#### Plan validation (Step 25)
-- Target body removed from registry → plan invalidated, log "[Nav] plan invalidated — target body no longer exists"
-- Plan older than MaxPlanAge (120s) → plan invalidated, log "[Nav] plan invalidated — stale"
-- StartRoute fails at planned time → either creates new plan (if ManeuverPlanner finds another window) or falls back to idle
-
-#### Plan event logging (Step 25)
-- `"[Nav] planned maneuver to X at T+Ys (waiting for burn window)"` — plan created
-- `"[Nav] executing planned maneuver to X (planned score=Y)"` — window arrived
-- `"[Nav] plan invalidated — target body no longer exists"` — target removed
-- `"[Nav] plan invalidated — stale (age=Xs)"` — plan too old
-All events use source tag "Navigation" (existing filter group).
+### Route Safety (Step 21), Maneuver Planning (Step 23), Burn Windows (Step 25)
+Unchanged.
 
 ------------------------------------------------------------------------
 
-## Debug Filter Coding Standards
+## Phase 26 Summary — What Was Removed vs Retained
 
-(unchanged from Step 24)
+### Removed (dead code)
+| Item | Reason |
+|---|---|
+| ReframeRoute() | Replaced by per-segment reference frames |
+| ReframeRouteOutward() | Replaced by per-segment reference frames |
+| UpdateShipLegacy() | Replaced by UpdateShipSegmented() |
+| StartInsertionPhaseLegacy() | Replaced by OrbitInsertion segment |
+| UpdateInsertionPhaseLegacy() | Replaced by OrbitInsertion segment |
+| CompleteArrivalLegacy() | Replaced by CompleteArrival() (reads segments) |
+| DetermineRouteFrame() | Segments define frames at build time |
+| BuildGlobalRoute() | Route is built by RouteSegmentBuilder |
+| BuildLocalRoute() | Route is built by RouteSegmentBuilder |
+| IsBodyRelatedToDestination() | Only used by reframe logic |
+| _lastFrameSwitchTime dict | Anti-jitter for reframe — not needed |
+| MinFrameSwitchInterval const | Anti-jitter for reframe — not needed |
+
+### Retained (compatibility / future use)
+| Item | Reason |
+|---|---|
+| HandleSOITransition() signature | Coordinator wiring — now empty no-op |
+| OrbitInsertionDuration property | Inspector serialization — unused |
+| ShipRoute.Frame, LocalFrameBodyId | Save/load compatibility |
+| ShipRoute.InsertionPhase* fields | Save/load compatibility |
+| ShipRoute.GetProgress() | Used by GetOverallSegmentProgress fallback |
+| RouteFrame enum | Referenced by ShipRoute.Frame |
+| SOIResolver | Debug, telemetry, snapshots |
 
 ------------------------------------------------------------------------
 
@@ -111,14 +84,11 @@ All events use source tag "Navigation" (existing filter group).
 
 | System | Notes |
 |---|---|
-| Patched Conics Full (Phase 26) | True conic sections per SOI segment |
 | Delta-v / Energy Model (Phase 27) | Maneuver cost and route comparison |
 | Hohmann Helper (Phase 28) | Optional baseline estimator |
 | Advanced Transfers (Phase 29) | Lambert-lite, intercept, non-coplanar |
 | Prices / Money | Currency, buy/sell prices |
-| Player trading UI | Buy/sell interface |
 | Save/Load | WorldRegistry serialization |
-| Multi-system support | Multiple star systems |
 | Combat, Ship modules, Factions, Contracts | Future systems |
 
 ------------------------------------------------------------------------
@@ -126,22 +96,21 @@ All events use source tag "Navigation" (existing filter group).
 ## Architecture Health Notes
 
 ### Clean boundaries maintained
-- PlannedManeuver is pure C# in World layer — no UnityEngine dependency
-- ShipState.WaitingForWindow has no special rendering behavior — standard orbit rendering applies
-- NPCShipScheduler plan logic is pure C# — no Unity dependency
-- Plan event callback (OnPlanEvent) follows existing event pattern (coordinator routes to GameDebug)
-- All existing simulation/world layer code unchanged — plan system is additive
+- All navigation code pure C# — no UnityEngine in Simulation
+- NPCShipScheduler unchanged — StartRoute() signature preserved
+- Coordinator still forwards SOI transitions — HandleSOITransition is safe no-op
+- ShipMovementSystem reduced from ~1200 lines to ~530 lines
 
-### Known technical debt (inherited + new)
-- PlannedManeuver.Score/DirectScore are 0.0 when created from PlannedDepartureTime (ManeuverPlanner doesn't expose these on the delayed path currently)
-- PlannedManeuver MaxPlanAge is a hardcoded constant (120s) — should be configurable via Inspector in future
-- WaitingForWindow ship continues to be subject to SOI transitions and docking logic — these should clear the plan if they change the ship's state unexpectedly (not implemented yet, low risk with current NPC patterns)
+### Known technical debt
+- PlannedManeuver.Score/DirectScore 0.0 from PlannedDepartureTime path
+- ShipRoute deprecated fields should be removed when save/load is implemented
+- InsertingIntoOrbit ShipState no longer entered — could be removed when safe
+- HandleSOITransition is an empty method — coordinator call could be removed later
 
 ------------------------------------------------------------------------
 
 ## Next Recommended Development Phase
 
-### Phase 26 — Patched Conics Full
 ### Phase 27 — Delta-v / Energy Model
 ### Phase 28 — Hohmann Helper (Optional)
-### Phase 29 — Advanced Transfers (Lambert-lite / Intercept)
+### Phase 29 — Advanced Transfers

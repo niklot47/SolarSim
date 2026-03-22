@@ -12,6 +12,7 @@ namespace SpaceSim.Debug
     /// <summary>
     /// Snapshot provider for the ship subsystem.
     /// Reports ship counts by state and role.
+    /// Phase 26a: added segmented route tracking (segmentedRoutes, totalSegments).
     /// </summary>
     public class ShipSnapshotProvider : IDebugSnapshotProvider
     {
@@ -28,6 +29,8 @@ namespace SpaceSim.Debug
             int total = 0, orbiting = 0, travelling = 0, docked = 0, approaching = 0, idle = 0;
             int waitingForWindow = 0, insertingIntoOrbit = 0;
             int traders = 0, patrol = 0, civilian = 0, player = 0;
+            int segmentedRoutes = 0, totalSegments = 0;
+            int activeSegmented = 0; // Phase 26b: ships currently using segmented execution.
 
             foreach (var body in _registry.AllCelestialBodies)
             {
@@ -50,6 +53,17 @@ namespace SpaceSim.Debug
                     case ShipRole.Civilian: civilian++; break;
                     case ShipRole.Player: player++; break;
                 }
+
+                // Phase 26a/b: track segmented route usage.
+                var route = body.ShipInfo.CurrentRoute;
+                if (route != null && route.Segments != null && route.Segments.Count > 0)
+                {
+                    segmentedRoutes++;
+                    totalSegments += route.Segments.Count;
+
+                    if (route.UseSegmentedRoute && body.ShipInfo.State == ShipState.Travelling)
+                        activeSegmented++;
+                }
             }
 
             snap.Status = $"{total} ships";
@@ -65,6 +79,9 @@ namespace SpaceSim.Debug
             snap.Data["patrol"] = patrol;
             snap.Data["civilian"] = civilian;
             snap.Data["player"] = player;
+            snap.Data["segmentedRoutes"] = segmentedRoutes;
+            snap.Data["totalSegments"] = totalSegments;
+            snap.Data["activeSegmented"] = activeSegmented;
             return snap;
         }
     }

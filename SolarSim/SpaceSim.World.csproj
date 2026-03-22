@@ -51,6 +51,7 @@
   <ItemGroup>
     <Compile Include="Assets\Scripts\World\Entities\CelestialBodyType.cs" />
     <Compile Include="Assets\Scripts\World\Entities\AttachmentMode.cs" />
+    <Compile Include="Assets\Scripts\World\Entities\RouteSegment.cs" />
     <Compile Include="Assets\Scripts\World\Entities\StationInfo.cs" />
     <Compile Include="Assets\Scripts\World\Entities\DockingInfo.cs" />
     <Compile Include="Assets\Scripts\World\Entities\StarSystem.cs" />
@@ -65,10 +66,11 @@
     <Compile Include="Assets\Scripts\World\Entities\ShipInfo.cs" />
     <Compile Include="Assets\Scripts\World\Entities\ShipState.cs" />
     <Compile Include="Assets\Scripts\World\Entities\ShipRoute.cs" />
+    <Compile Include="Assets\Scripts\World\Entities\SegmentType.cs" />
     <Compile Include="Assets\Scripts\World\Entities\StationDemand.cs" />
     <Compile Include="Assets\Scripts\World\Entities\DockingPort.cs" />
-    <Compile Include="Assets\Scripts\World\Entities\WorldEntity.cs" />
     <Compile Include="Assets\Scripts\World\Entities\PlannedManeuver.cs" />
+    <Compile Include="Assets\Scripts\World\Entities\WorldEntity.cs" />
     <Compile Include="Assets\Scripts\World\ValueTypes\OrbitDefinition.cs" />
     <Compile Include="Assets\Scripts\World\Entities\CelestialBody.cs" />
     <Compile Include="Assets\Scripts\World\ValueTypes\SpinDefinition.cs" />
