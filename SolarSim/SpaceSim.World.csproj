@@ -68,6 +68,7 @@
     <Compile Include="Assets\Scripts\World\Entities\StationDemand.cs" />
     <Compile Include="Assets\Scripts\World\Entities\DockingPort.cs" />
     <Compile Include="Assets\Scripts\World\Entities\WorldEntity.cs" />
+    <Compile Include="Assets\Scripts\World\Entities\PlannedManeuver.cs" />
     <Compile Include="Assets\Scripts\World\ValueTypes\OrbitDefinition.cs" />
     <Compile Include="Assets\Scripts\World\Entities\CelestialBody.cs" />
     <Compile Include="Assets\Scripts\World\ValueTypes\SpinDefinition.cs" />

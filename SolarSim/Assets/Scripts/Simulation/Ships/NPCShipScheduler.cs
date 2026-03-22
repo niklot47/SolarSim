@@ -17,23 +17,24 @@ namespace SpaceSim.Simulation.Ships
     /// Runs each tick after ShipMovementSystem.Update() and DockingSystem.Update().
     /// Pure C# — no UnityEngine dependency.
     ///
-    /// Trader behavior (demand-driven):
-    /// 1. Ask TradeOpportunityResolver for best opportunity.
-    /// 2. Travel to source station, load specific resource.
-    /// 3. Travel to destination station, unload specific resource.
-    /// 4. Repeat. Falls back to random station if no opportunities exist.
+    /// Phase 25 — Burn Windows / Persistent Plans:
     ///
-    /// Trade job phase flow:
-    ///   GoingToSource → (dock at source) → LoadingAtSource → GoingToDestination →
-    ///   (dock at destination) → UnloadingAtDestination → job cleared → new job
+    /// OLD behavior (Phase 23):
+    ///   Every tick → recompute route → maybe delay (stateless between ticks)
     ///
-    /// Bug 2 fix (retry spam):
-    ///   When StartRoute() returns false because ManeuverPlanner found a delayed window,
-    ///   ship.ShipInfo.PlannedDepartureTime is set to the future window time by
-    ///   ShipMovementSystem. NPCShipScheduler now checks this before calling StartRoute
-    ///   and skips until that time is reached. Additionally, _arrivalTimes is reset when
-    ///   StartRoute returns false, so the IdleDelay acts as a minimum retry interval
-    ///   even for routes that have no planned window (all-failed case).
+    /// NEW behavior (Phase 25):
+    ///   1. Ship picks a destination → calls ManeuverPlanner
+    ///   2. If immediate window available → execute now (no plan stored)
+    ///   3. If delayed window found → create PlannedManeuver on ShipInfo,
+    ///      set state to WaitingForWindow
+    ///   4. Each tick while WaitingForWindow:
+    ///      - Validate plan (target still exists, plan not stale)
+    ///      - If simTime >= PlannedDepartureTime → attempt StartRoute
+    ///      - If plan invalid → clear plan, revert to Orbiting, reschedule
+    ///   5. Ship continues orbiting normally while waiting (orbit is not interrupted)
+    ///
+    /// This makes NPC ships look intentional — they wait for windows rather than
+    /// retrying blindly every tick. Traffic forms natural rhythms.
     /// </summary>
     public class NPCShipScheduler
     {
@@ -87,6 +88,9 @@ namespace SpaceSim.Simulation.Ships
 
         /// <summary>Optional callback for debug logging of trade route selection.</summary>
         public Action<EntityId, string> OnTradeRouteSelected;
+
+        /// <summary>Optional callback for navigation/plan events (routed to GameDebug by coordinator).</summary>
+        public Action<EntityId, string> OnPlanEvent;
 
         public event Action<EntityId> OnRouteScheduled;
 
@@ -191,6 +195,13 @@ namespace SpaceSim.Simulation.Ships
                     continue;
                 }
 
+                // Handle ships waiting for burn window (Phase 25).
+                if (body.ShipInfo.State == ShipState.WaitingForWindow)
+                {
+                    HandleWaitingForWindow(body, simTime);
+                    continue;
+                }
+
                 // Skip non-Orbiting ships.
                 if (body.ShipInfo.State != ShipState.Orbiting)
                     continue;
@@ -246,6 +257,98 @@ namespace SpaceSim.Simulation.Ships
             }
         }
 
+        // ---------------------------------------------------------------
+        // Phase 25: WaitingForWindow handler
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Handle a ship in WaitingForWindow state.
+        /// The ship has a PlannedManeuver and is orbiting while waiting.
+        /// When the departure time arrives, attempt to execute the plan.
+        /// If the plan becomes invalid, clear it and revert to Orbiting.
+        /// </summary>
+        private void HandleWaitingForWindow(CelestialBody ship, double simTime)
+        {
+            var plan = ship.ShipInfo.CurrentPlan;
+
+            // Validate plan still exists.
+            if (plan == null)
+            {
+                ship.ShipInfo.State = ShipState.Orbiting;
+                return;
+            }
+
+            // Validate target body still exists in registry.
+            var target = _registry.GetCelestialBody(plan.TargetBodyId);
+            if (target == null)
+            {
+                OnPlanEvent?.Invoke(ship.Id,
+                    $"[Nav] {ship.DisplayName}: plan invalidated — target body no longer exists");
+                ship.ShipInfo.ClearPlannedManeuver();
+                _arrivalTimes[ship.Id] = simTime;
+                return;
+            }
+
+            // Check plan freshness (not too old).
+            if (!plan.IsFresh(simTime))
+            {
+                OnPlanEvent?.Invoke(ship.Id,
+                    $"[Nav] {ship.DisplayName}: plan invalidated — stale (age={simTime - plan.CreatedAtSimTime:F0}s)");
+                ship.ShipInfo.ClearPlannedManeuver();
+                _arrivalTimes[ship.Id] = simTime;
+                return;
+            }
+
+            // Not yet time to depart.
+            if (simTime < plan.PlannedDepartureTime)
+                return;
+
+            // Window has arrived — attempt to execute the plan.
+            OnPlanEvent?.Invoke(ship.Id,
+                $"[Nav] {ship.DisplayName}: executing planned maneuver to " +
+                $"{target.DisplayName} (planned score={plan.Score:F2})");
+
+            // Clear the plan BEFORE calling StartRoute so it doesn't interfere.
+            EntityId targetId = plan.TargetBodyId;
+            double duration = plan.EstimatedTravelDuration;
+            ship.ShipInfo.CurrentPlan = null;
+            ship.ShipInfo.PlannedDepartureTime = 0.0;
+            ship.ShipInfo.State = ShipState.Orbiting;
+
+            bool started = _movementSystem.StartRoute(
+                ship.Id, targetId, simTime, duration, _positionResolver);
+
+            if (started)
+            {
+                _lastPatrolOrigin[ship.Id] = ship.ParentId;
+                _arrivalTimes.Remove(ship.Id);
+                _pendingDeparture.Remove(ship.Id);
+                _pendingSurfaceDock.Remove(ship.Id);
+                OnRouteScheduled?.Invoke(ship.Id);
+            }
+            else
+            {
+                // StartRoute failed even at the planned time.
+                // This can happen if ManeuverPlanner finds a different (later) window now.
+                // Check if a new delayed plan was set by StartRoute.
+                if (ship.ShipInfo.PlannedDepartureTime > 0.0)
+                {
+                    // ShipMovementSystem set a new PlannedDepartureTime.
+                    // Create a new persistent plan from it.
+                    CreatePlanFromDelayedResult(ship, targetId, duration, simTime);
+                }
+                else
+                {
+                    // Total failure — reset and try again after idle delay.
+                    _arrivalTimes[ship.Id] = simTime;
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Orbital station orbit handling
+        // ---------------------------------------------------------------
+
         /// <summary>
         /// Handle ship orbiting an orbital station — request docking after brief delay.
         /// </summary>
@@ -271,6 +374,10 @@ namespace SpaceSim.Simulation.Ships
                 ScheduleNewRouteIfReady(ship, simTime);
             }
         }
+
+        // ---------------------------------------------------------------
+        // Docked ship handling
+        // ---------------------------------------------------------------
 
         private void HandleDockedShip(CelestialBody ship, double simTime)
         {
@@ -364,16 +471,16 @@ namespace SpaceSim.Simulation.Ships
             }
         }
 
+        // ---------------------------------------------------------------
+        // Route scheduling (Phase 25 rewrite)
+        // ---------------------------------------------------------------
+
         /// <summary>
         /// Ship just undocked — schedule a new route immediately (skip idle delay).
-        /// Respects PlannedDepartureTime so departure doesn't happen before the window opens.
+        /// Phase 25: uses plan-based flow.
         /// </summary>
         private void ScheduleDepartureFromStation(CelestialBody ship, double simTime)
         {
-            // Bug 2 fix: if ManeuverPlanner found a delayed window, wait for it.
-            if (ship.ShipInfo.PlannedDepartureTime > 0.0 && simTime < ship.ShipInfo.PlannedDepartureTime)
-                return;
-
             EntityId destination = PickDestination(ship);
             if (!destination.IsValid)
                 return;
@@ -394,21 +501,22 @@ namespace SpaceSim.Simulation.Ships
             }
             else
             {
-                // Route planning failed (window not yet open or all blocked).
-                // Reset _arrivalTimes so the idle delay acts as a minimum retry interval
-                // for the all-blocked case (PlannedDepartureTime handles the delayed case).
-                _arrivalTimes[ship.Id] = simTime;
+                // Route planning failed — check if ManeuverPlanner suggested a delayed window.
+                if (ship.ShipInfo.PlannedDepartureTime > 0.0)
+                {
+                    CreatePlanFromDelayedResult(ship, destination, duration, simTime);
+                    _pendingDeparture.Remove(ship.Id);
+                }
+                else
+                {
+                    // Total failure — wait idle delay before retrying.
+                    _arrivalTimes[ship.Id] = simTime;
+                }
             }
         }
 
         private void ScheduleNewRouteIfReady(CelestialBody ship, double simTime)
         {
-            // Bug 2 fix: skip entirely if ManeuverPlanner found a delayed window that
-            // hasn't opened yet. PlannedDepartureTime is set by ShipMovementSystem and
-            // cleared when a route successfully starts.
-            if (ship.ShipInfo.PlannedDepartureTime > 0.0 && simTime < ship.ShipInfo.PlannedDepartureTime)
-                return;
-
             if (!_arrivalTimes.ContainsKey(ship.Id))
                 _arrivalTimes[ship.Id] = simTime;
 
@@ -436,12 +544,52 @@ namespace SpaceSim.Simulation.Ships
             }
             else
             {
-                // Route planning failed. Reset _arrivalTimes so the scheduler waits at
-                // least IdleDelay sim-s before retrying. This prevents a tight retry loop
-                // in the all-blocked case where PlannedDepartureTime is not set.
-                _arrivalTimes[ship.Id] = simTime;
+                // Route planning failed — check if a delayed window was found.
+                if (ship.ShipInfo.PlannedDepartureTime > 0.0)
+                {
+                    CreatePlanFromDelayedResult(ship, destination, duration, simTime);
+                }
+                else
+                {
+                    // Total failure — reset arrival time for retry after idle delay.
+                    _arrivalTimes[ship.Id] = simTime;
+                }
             }
         }
+
+        /// <summary>
+        /// Create a persistent PlannedManeuver from the delayed result left by
+        /// ShipMovementSystem/ManeuverPlanner on ShipInfo.PlannedDepartureTime.
+        /// Transitions ship to WaitingForWindow state.
+        /// </summary>
+        private void CreatePlanFromDelayedResult(
+            CelestialBody ship, EntityId targetId, double travelDuration, double simTime)
+        {
+            double departureTime = ship.ShipInfo.PlannedDepartureTime;
+
+            var plan = new PlannedManeuver(
+                departureTime: departureTime,
+                targetBodyId: targetId,
+                score: 0.0, // Not available from PlannedDepartureTime alone.
+                directScore: 0.0,
+                travelDuration: travelDuration,
+                createdAt: simTime);
+            ship.ShipInfo.CurrentPlan = plan;
+            ship.ShipInfo.State = ShipState.WaitingForWindow;
+
+            double waitSec = departureTime - simTime;
+
+            var target = _registry.GetCelestialBody(targetId);
+            string targetName = target?.DisplayName ?? targetId.ToString();
+
+            OnPlanEvent?.Invoke(ship.Id,
+                $"[Nav] {ship.DisplayName}: planned maneuver to {targetName} at T+{waitSec:F0}s " +
+                $"(waiting for burn window)");
+        }
+
+        // ---------------------------------------------------------------
+        // Travel duration computation
+        // ---------------------------------------------------------------
 
         private double ComputeTravelDuration(CelestialBody ship, EntityId destinationId, double simTime)
         {
@@ -517,6 +665,10 @@ namespace SpaceSim.Simulation.Ships
             }
             return SimVec3.Zero;
         }
+
+        // ---------------------------------------------------------------
+        // Destination selection
+        // ---------------------------------------------------------------
 
         private EntityId PickDestination(CelestialBody ship)
         {
@@ -691,11 +843,19 @@ namespace SpaceSim.Simulation.Ships
 
         public string GetStatus()
         {
+            int waitingCount = 0;
+            foreach (var body in _registry.AllCelestialBodies)
+            {
+                if (body.ShipInfo != null && body.ShipInfo.State == ShipState.WaitingForWindow)
+                    waitingCount++;
+            }
+
             return $"NPCShipScheduler: {_destinationCandidates.Count} destinations, " +
                    $"{_stationCandidates.Count} stations, " +
                    $"{_arrivalTimes.Count} ships waiting, " +
                    $"{_pendingDeparture.Count} pending departure, " +
-                   $"{_pendingSurfaceDock.Count} pending surface dock, speed={TravelSpeed:F1} Mm/s";
+                   $"{_pendingSurfaceDock.Count} pending surface dock, " +
+                   $"{waitingCount} waiting for window, speed={TravelSpeed:F1} Mm/s";
         }
     }
 }

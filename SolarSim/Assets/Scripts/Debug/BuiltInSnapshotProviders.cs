@@ -26,6 +26,7 @@ namespace SpaceSim.Debug
             if (_registry == null) { snap.Status = "unavailable"; return snap; }
 
             int total = 0, orbiting = 0, travelling = 0, docked = 0, approaching = 0, idle = 0;
+            int waitingForWindow = 0, insertingIntoOrbit = 0;
             int traders = 0, patrol = 0, civilian = 0, player = 0;
 
             foreach (var body in _registry.AllCelestialBodies)
@@ -39,6 +40,8 @@ namespace SpaceSim.Debug
                     case ShipState.Docked: docked++; break;
                     case ShipState.ApproachingStation: approaching++; break;
                     case ShipState.Idle: idle++; break;
+                    case ShipState.WaitingForWindow: waitingForWindow++; break;
+                    case ShipState.InsertingIntoOrbit: insertingIntoOrbit++; break;
                 }
                 switch (body.ShipInfo.Role)
                 {
@@ -56,6 +59,8 @@ namespace SpaceSim.Debug
             snap.Data["docked"] = docked;
             snap.Data["approaching"] = approaching;
             snap.Data["idle"] = idle;
+            snap.Data["waitingForWindow"] = waitingForWindow;
+            snap.Data["insertingIntoOrbit"] = insertingIntoOrbit;
             snap.Data["traders"] = traders;
             snap.Data["patrol"] = patrol;
             snap.Data["civilian"] = civilian;

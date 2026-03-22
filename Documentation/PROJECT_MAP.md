@@ -33,7 +33,7 @@ Key files:
 - `Scripts/Simulation/Ships/RouteSafetyChecker.cs` — route collision validation
 - `Scripts/Simulation/Ships/TransferPlannerLite.cs` — retained reference; superseded by ManeuverPlanner
 - `Scripts/Simulation/Ships/ManeuverPlanner.cs` — multi-window maneuver planning with geometry scoring
-- `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing; PlannedDepartureTime guard
+- `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing; **Phase 25: persistent plan-based burn window behavior**
 - `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution
 - `Scripts/Simulation/Docking/DockingSystem.cs` — docking lifecycle
 - `Scripts/Simulation/Economy/CargoTransferService.cs` — cargo transfer operations
@@ -49,20 +49,23 @@ Key files:
 Game domain entities and shared world state models.
 
 Key files:
-- `Scripts/World/Entities/ShipInfo.cs` — includes `PlannedDepartureTime` field
+- `Scripts/World/Entities/ShipInfo.cs` — includes `PlannedDepartureTime`, **`CurrentPlan` (PlannedManeuver)**, **`HasPlannedManeuver`**, **`ClearPlannedManeuver()`**
+- `Scripts/World/Entities/ShipState.cs` — **includes `WaitingForWindow` state (Phase 25)**
+- `Scripts/World/Entities/PlannedManeuver.cs` — **(Phase 25)** persistent maneuver plan: departure time, target, score, freshness check
 - (all other World files unchanged)
 
 ### 3. Rendering
 
 Key files:
-- `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point; **holds `[SerializeField] DebugFilterProfile` reference; applies filter at startup and on OnValidate**
-- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services
+- `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point; holds DebugFilterProfile reference
+- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services; **Phase 25: connects OnPlanEvent callback**
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions to build data
 - (all other Rendering files unchanged)
 
 ### 4. UI
 
-Key files: unchanged.
+Key files:
+- `Scripts/UI/Localization/UIStrings.cs` — **Phase 25: added `shipstate.WaitingForWindow`, `panel.details.planned_target`, `panel.details.planned_depart`, `modal.section.maneuver`**
 
 ### 5. Data / Shared
 
@@ -70,21 +73,9 @@ Unchanged.
 
 ### Debug
 
-Structured debug event and snapshot system for AI-assisted debugging. Exports JSON bundles to disk for offline analysis. **Includes configurable log filter system with hierarchical Inspector UI.**
-
 Key files:
-- `Scripts/Debug/GameDebug.cs` — static API; **Log() checks DebugFilter before recording; ActiveFilter property; TotalEventsFiltered counter**
-- `Scripts/Debug/DebugFilter.cs` — **(Step 24)** pure C# runtime filter; category + source tag + severity checks; errors always pass; thread-safe
-- `Scripts/Debug/DebugFilterProfile.cs` — **(Step 24)** ScriptableObject with hierarchical DebugFilterGroup list; PopulateDefaults() creates standard groups; ApplyTo(DebugFilter) method
-- `Scripts/Debug/DebugFilterProfileEditor.cs` — **(Step 24)** custom Inspector; tree view with foldout groups, master toggles, indented child tag toggles; live-apply during Play mode
-- `Scripts/Debug/DebugFilterProfileCreator.cs` — **(Step 24)** editor menu to create default profile asset
-- `Scripts/Debug/DebugEvent.cs` — structured event model with category, severity, timestamp
-- `Scripts/Debug/DebugModels.cs` — DebugSnapshot, SubsystemSnapshot, DebugBundle, BundleMetadata **(extended with FilterSummary, MutedCategories, MutedTags, TotalEventsFiltered)**, InvariantViolation
-- `Scripts/Debug/RingBuffer.cs` — bounded collection
-- `Scripts/Debug/DebugSnapshotProviders.cs` — IDebugSnapshotProvider interface + SnapshotProviderRegistry
-- `Scripts/Debug/DebugInvariantChecker.cs` — 7 invariant checks
-- `Scripts/Debug/DebugExportUtility.cs` — JSON serialization + file export; **serializes filter metadata fields**
-- `Scripts/Debug/BuiltInSnapshotProviders.cs` — 5 providers
+- `Scripts/Debug/BuiltInSnapshotProviders.cs` — **Phase 25: ShipSnapshotProvider tracks WaitingForWindow + InsertingIntoOrbit counts**
+- (all other Debug files unchanged)
 
 ------------------------------------------------------------------------
 
@@ -102,85 +93,43 @@ Key files:
 
 ------------------------------------------------------------------------
 
-## Debug Filter System (Step 24)
-
-### Architecture
-
-```
-DebugFilterProfile (ScriptableObject, authored in Inspector)
-    contains: List<DebugFilterGroup>
-    each group: DisplayName, Enabled (master), List<string> Categories, List<DebugTagToggle> Tags
-    |
-    v
-GameBootstrap.Initialize()
-    debugFilterProfile.ApplyTo(GameDebug.ActiveFilter)
-    |
-    v
-DebugFilter (pure C# runtime instance, static on GameDebug)
-    IsAllowed(category, severity, sourceTag) → bool
-    Errors ALWAYS pass
-    |
-    v
-GameDebug.Log()
-    if (!_filter.IsAllowed(...)) { _totalEventsFiltered++; return; }
-    → event enters RingBuffer → forwarded to Unity console via OnEventLogged
-    |
-    v
-DebugExportUtility.BundleToJson()
-    BundleMetadata includes: FilterSummary, MutedCategories, MutedTags, TotalEventsFiltered
-```
-
-### Inspector tree rendering
-
-```
-[DebugFilterProfile Inspector]
-
-Global Settings:
-  [✓] Enable Logging
-  Minimum Severity: [Info ▾]
-
-[Enable All] [Disable All] [Reset Defaults]
-
-Filter Groups:
-  ┌─────────────────────────────────────────┐
-  │ ▼ [✓] Navigation              [SHIPS,PATH] │
-  │      [✓] Navigation                        │
-  │      [✓] Docking                           │
-  ├─────────────────────────────────────────┤
-  │ ▼ [✓] Economy                  [ECONOMY]   │
-  │      [✓] CargoTransfer                     │
-  │      [✓] Production                        │
-  │      [✓] TradeAI                           │
-  ├─────────────────────────────────────────┤
-  │ ▶ [✗] Orbits & SOI             [ORBIT]     │  ← collapsed, disabled
-  └─────────────────────────────────────────┘
-```
-
-### Source tag registry
-
-| Source Tag | Category | Description |
-|---|---|---|
-| Navigation | SHIPS | Route planning, maneuver scores, frame switching, orbit insertion |
-| Docking | SHIPS | Dock/undock lifecycle |
-| CargoTransfer | ECONOMY | Ship load/unload at stations |
-| Production | ECONOMY | Station production cycle completions |
-| TradeAI | ECONOMY | Trader route selection decisions |
-| SOI | ORBIT | SOI boundary transitions |
-| SystemLoader | SIM | Star system loading from assets/JSON |
-| GameDebug | DEBUG | Debug system self-diagnostics |
-| InvariantChecker | DEBUG | Invariant violation details |
-
-------------------------------------------------------------------------
-
 ## Simulation Tick Order
 
 ```
 ShipMovementSystem.Update()
 DockingSystem.Update()
-NPCShipScheduler.Update()
+NPCShipScheduler.Update()       ← handles WaitingForWindow ships
 StationProductionSystem.Update()
 [Periodic] StationDemandEvaluator + TradeOpportunityResolver
 SOIResolver.UpdateAllShips()
+```
+
+------------------------------------------------------------------------
+
+## Ship State Machine (Phase 25)
+
+```
+                    ┌──────────────────────┐
+                    │      Orbiting        │◄─────────────────┐
+                    └──────┬───────────────┘                  │
+                           │                                  │
+              ┌────────────┼────────────────┐                 │
+              │ idle delay │ ManeuverPlanner │                 │
+              │ + pick     │ returns delayed │                 │
+              │ destination│ window          │                 │
+              ▼            ▼                 │                 │
+     ┌────────────┐  ┌──────────────────┐   │                 │
+     │ Travelling │  │ WaitingForWindow │───┘ (plan invalid)  │
+     └─────┬──────┘  └────────┬─────────┘                     │
+           │                  │ (window arrives)              │
+           │                  ▼                               │
+           │         ┌────────────┐                           │
+           │         │ Travelling │                           │
+           │         └─────┬──────┘                           │
+           ▼               ▼                                  │
+     ┌──────────────────────┐                                 │
+     │ InsertingIntoOrbit   │─────────────────────────────────┘
+     └──────────────────────┘
 ```
 
 ------------------------------------------------------------------------
@@ -200,7 +149,7 @@ SOIResolver.UpdateAllShips()
 - New source tags must be added to `DebugFilterProfile.PopulateDefaults()` under the appropriate group
 - Error-severity logs must never depend on filter state — they always pass
 - Each feature delivery must include recommended filter settings for testing
-- Source tags use PascalCase, one or two words maximum (e.g. "CargoTransfer", not "cargo_transfer_service")
+- Source tags use PascalCase, one or two words maximum
 
 ------------------------------------------------------------------------
 
@@ -211,8 +160,8 @@ Completed:
 2. Transfer Planning Lite ✓ (Phase 22)
 3. Maneuver Planning Foundation ✓ (Phase 23, Iterations 1–3 + Bugfixes)
 4. Debug Log Filter System ✓ (Step 24)
+5. Burn Windows / Persistent Plans ✓ (Phase 25)
 
-### Phase 25 — Burn Windows / Phase Alignment
 ### Phase 26 — Patched Conics Full
 ### Phase 27 — Delta-v / Energy Model
 ### Phase 28 — Hohmann Helper (Optional)

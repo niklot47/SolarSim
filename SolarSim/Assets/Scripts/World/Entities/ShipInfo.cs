@@ -6,7 +6,8 @@ namespace SpaceSim.World.Entities
     /// <summary>
     /// Ship-specific data attached to a CelestialBody with BodyType.Ship.
     /// Stored as a plain data object — no Unity dependency.
-    /// Contains role, class, movement state, active route, docking state, cargo, and trade job.
+    /// Contains role, class, movement state, active route, docking state, cargo,
+    /// trade job, and planned maneuver.
     /// </summary>
     public class ShipInfo
     {
@@ -56,7 +57,22 @@ namespace SpaceSim.World.Entities
         /// </summary>
         public TraderJob CurrentTradeJob { get; set; }
 
-        // --- Maneuver Planning ---
+        // --- Maneuver Planning (Phase 25) ---
+
+        /// <summary>
+        /// Persistent maneuver plan (Phase 25 — Burn Windows).
+        /// Non-null when the ship has decided to wait for a better departure window.
+        /// Ship enters WaitingForWindow state until PlannedDepartureTime is reached.
+        /// Cleared when the plan is executed, invalidated, or the ship's role changes.
+        /// </summary>
+        public PlannedManeuver CurrentPlan { get; set; }
+
+        /// <summary>
+        /// Whether the ship has a planned maneuver waiting to execute.
+        /// Convenience property — checks CurrentPlan is non-null and target is valid.
+        /// </summary>
+        public bool HasPlannedManeuver =>
+            CurrentPlan != null && CurrentPlan.TargetBodyId.IsValid;
 
         /// <summary>
         /// Planned future departure time set by ShipMovementSystem when ManeuverPlanner
@@ -64,6 +80,11 @@ namespace SpaceSim.World.Entities
         /// StartRoute() until this simulation time is reached, preventing retry spam.
         /// 0.0 = no planned departure (depart as soon as ready).
         /// Cleared automatically when a route successfully starts.
+        ///
+        /// NOTE (Phase 25): This field is retained for backward compatibility.
+        /// New code should use CurrentPlan.PlannedDepartureTime instead.
+        /// ShipMovementSystem still writes to this field; NPCShipScheduler reads
+        /// CurrentPlan preferentially.
         /// </summary>
         public double PlannedDepartureTime { get; set; }
 
@@ -126,6 +147,7 @@ namespace SpaceSim.World.Entities
             CurrentSOIBodyId = EntityId.None;
             Cargo = null;
             CurrentTradeJob = null;
+            CurrentPlan = null;
             PlannedDepartureTime = 0.0;
             DockedAtStationId = EntityId.None;
             DockedPortId = -1;
@@ -147,6 +169,7 @@ namespace SpaceSim.World.Entities
             CurrentSOIBodyId = EntityId.None;
             Cargo = null;
             CurrentTradeJob = null;
+            CurrentPlan = null;
             PlannedDepartureTime = 0.0;
             DockedAtStationId = EntityId.None;
             DockedPortId = -1;
@@ -169,6 +192,15 @@ namespace SpaceSim.World.Entities
             DockedAtTime = 0.0;
         }
 
+        /// <summary>Clear planned maneuver and reset state to Orbiting if waiting.</summary>
+        public void ClearPlannedManeuver()
+        {
+            CurrentPlan = null;
+            PlannedDepartureTime = 0.0;
+            if (State == ShipState.WaitingForWindow)
+                State = ShipState.Orbiting;
+        }
+
         public override string ToString()
         {
             string routeStr = CurrentRoute != null ? $" route={CurrentRoute}" : "";
@@ -176,7 +208,7 @@ namespace SpaceSim.World.Entities
             string dockStr = IsDocked ? $" docked={DockedAtStationId}:{DockedPortId}" : "";
             string cargoStr = Cargo != null ? $" {Cargo}" : "";
             string jobStr = CurrentTradeJob != null ? $" {CurrentTradeJob}" : "";
-            string planStr = PlannedDepartureTime > 0.0 ? $" plannedDep={PlannedDepartureTime:F1}" : "";
+            string planStr = HasPlannedManeuver ? $" {CurrentPlan}" : "";
             return $"ShipInfo[{Role} {State} key={ShipKey} class={ShipClass}{routeStr}{soiStr}{dockStr}{cargoStr}{jobStr}{planStr}]";
         }
     }

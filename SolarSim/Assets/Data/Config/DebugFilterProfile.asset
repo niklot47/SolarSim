@@ -27,7 +27,7 @@ MonoBehaviour:
       Enabled: 1
     FoldoutOpen: 1
   - DisplayName: Economy
-    Enabled: 1
+    Enabled: 0
     Categories:
     - ECONOMY
     Tags:
@@ -47,7 +47,7 @@ MonoBehaviour:
       Enabled: 1
     FoldoutOpen: 1
   - DisplayName: NPC
-    Enabled: 1
+    Enabled: 0
     Categories:
     - NPC
     Tags: []
@@ -61,7 +61,7 @@ MonoBehaviour:
       Enabled: 1
     FoldoutOpen: 1
   - DisplayName: UI
-    Enabled: 1
+    Enabled: 0
     Categories:
     - UI
     Tags: []

@@ -157,6 +157,7 @@ namespace SpaceSim.Rendering.Bootstrap
             _npcScheduler.SetCargoTransfer(_cargoTransfer);
             _npcScheduler.SetTradeResolver(_tradeResolver);
             _npcScheduler.OnTradeRouteSelected += OnTradeRouteSelected;
+            _npcScheduler.OnPlanEvent += OnPlanEvent;
 
             if (mapRenderer != null)
             {
@@ -264,6 +265,7 @@ namespace SpaceSim.Rendering.Bootstrap
             {
                 _npcScheduler.OnRouteScheduled -= OnNpcRouteScheduled;
                 _npcScheduler.OnTradeRouteSelected -= OnTradeRouteSelected;
+                _npcScheduler.OnPlanEvent -= OnPlanEvent;
             }
             if (_dockingSystem != null)
             {
@@ -398,6 +400,14 @@ namespace SpaceSim.Rendering.Bootstrap
         private void OnTradeRouteSelected(EntityId shipId, string message)
         {
             GameDebug.Log(DebugCategory.ECONOMY, message, source: "TradeAI");
+        }
+
+        /// <summary>
+        /// Phase 25: Plan event handler — routes plan lifecycle logs to GameDebug.
+        /// </summary>
+        private void OnPlanEvent(EntityId shipId, string message)
+        {
+            GameDebug.Log(DebugCategory.SHIPS, message, source: "Navigation");
         }
 
         private void RemoveFromTransitParent(EntityId shipId)

@@ -32,6 +32,15 @@ namespace SpaceSim.World.Entities
         /// to final orbit radius in the local frame of the arrival body.
         /// Transitions to Orbiting when insertion is complete.
         /// </summary>
-        InsertingIntoOrbit
+        InsertingIntoOrbit,
+
+        /// <summary>
+        /// Ship is waiting for a planned burn window (Phase 25).
+        /// The ship has a PlannedManeuver stored on ShipInfo and continues
+        /// orbiting its parent body until PlannedDepartureTime is reached.
+        /// Transitions to Travelling when the window opens and route starts.
+        /// Transitions back to Orbiting if the plan is invalidated.
+        /// </summary>
+        WaitingForWindow
     }
 }

@@ -65,6 +65,10 @@ namespace SpaceSim.UI.Localization
             ["panel.details.trade_job"] = "\u0417\u0430\u0434\u0430\u043d\u0438\u0435",
             ["panel.details.trade_job_none"] = "\u041d\u0435\u0442",
 
+            // Planned maneuver details (Phase 25).
+            ["panel.details.planned_target"] = "\u0426\u0435\u043b\u044c",
+            ["panel.details.planned_depart"] = "\u0412\u044b\u043b\u0435\u0442 \u0447\u0435\u0440\u0435\u0437",
+
             // Demand level labels.
             ["demand.high"] = "\u0412\u044b\u0441\u043e\u043a\u0438\u0439",
             ["demand.medium"] = "\u0421\u0440\u0435\u0434\u043d\u0438\u0439",
@@ -116,6 +120,7 @@ namespace SpaceSim.UI.Localization
             ["shipstate.Docking"] = "\u0421\u0442\u044b\u043a\u043e\u0432\u043a\u0430",
             ["shipstate.Docked"] = "\u041f\u0440\u0438\u0441\u0442\u044b\u043a\u043e\u0432\u0430\u043d",
             ["shipstate.InsertingIntoOrbit"] = "\u0412\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0435 \u0432 \u043e\u0440\u0431\u0438\u0442\u0443",
+            ["shipstate.WaitingForWindow"] = "\u041e\u0436\u0438\u0434\u0430\u043d\u0438\u0435 \u043e\u043a\u043d\u0430",
 
             // Trade job phase names.
             ["tradephase.GoingToSource"] = "\u041a \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u0443",
@@ -143,6 +148,7 @@ namespace SpaceSim.UI.Localization
             ["modal.section.economy"] = "\u042d\u043a\u043e\u043d\u043e\u043c\u0438\u043a\u0430",
             ["modal.section.production"] = "\u041f\u0440\u043e\u0438\u0437\u0432\u043e\u0434\u0441\u0442\u0432\u043e",
             ["modal.section.demand"] = "\u0421\u043f\u0440\u043e\u0441 / \u0418\u0437\u0431\u044b\u0442\u043e\u043a",
+            ["modal.section.maneuver"] = "\u041c\u0430\u043d\u0451\u0432\u0440",
 
             // Modal detail labels.
             ["modal.details.orbit_radius"] = "\u0420\u0430\u0434\u0438\u0443\u0441 \u043e\u0440\u0431\u0438\u0442\u044b",
