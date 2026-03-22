@@ -52,8 +52,12 @@
     <Compile Include="Assets\Scripts\Debug\DebugSnapshotProviders.cs" />
     <Compile Include="Assets\Scripts\Debug\RingBuffer.cs" />
     <Compile Include="Assets\Scripts\Debug\GameDebug.cs" />
+    <Compile Include="Assets\Scripts\Debug\DebugFilterProfileCreator.cs" />
+    <Compile Include="Assets\Scripts\Debug\DebugFilterProfile.cs" />
     <Compile Include="Assets\Scripts\Debug\DebugExportUtility.cs" />
+    <Compile Include="Assets\Scripts\Debug\DebugFilterProfileEditor.cs" />
     <Compile Include="Assets\Scripts\Debug\BuiltInSnapshotProviders.cs" />
+    <Compile Include="Assets\Scripts\Debug\DebugFilter.cs" />
     <Compile Include="Assets\Scripts\Debug\DebugModels.cs" />
     <Compile Include="Assets\Scripts\Debug\DebugEvent.cs" />
     <Compile Include="Assets\Scripts\Debug\DebugInvariantChecker.cs" />

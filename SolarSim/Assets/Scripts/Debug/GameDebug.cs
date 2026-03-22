@@ -9,10 +9,17 @@ namespace SpaceSim.Debug
     /// snapshots via providers, exports JSON bundles to disk, and validates
     /// invariants.
     ///
+    /// Log filtering (Step 24 addition):
+    ///   All Log() calls pass through a DebugFilter instance before recording.
+    ///   Filter checks: category enabled, source tag not muted, minimum severity.
+    ///   Errors ALWAYS pass regardless of filter settings.
+    ///   Filter configuration is driven by DebugFilterProfile (ScriptableObject)
+    ///   and can be changed live in the Inspector during Play mode.
+    ///
     /// Static API for easy access from any system.
     ///
     /// Usage:
-    ///   GameDebug.Log(DebugCategory.ECONOMY, "Ship loaded cargo");
+    ///   GameDebug.Log(DebugCategory.ECONOMY, "Ship loaded cargo", source: "CargoTransfer");
     ///   GameDebug.CaptureSnapshot("before trade");
     ///   GameDebug.RunInvariantChecks();
     ///   string path = GameDebug.ExportBundle();
@@ -35,6 +42,10 @@ namespace SpaceSim.Debug
         private static string _lastExportPath = "";
         private static int _totalEventsLogged = 0;
         private static int _totalErrorsLogged = 0;
+        private static int _totalEventsFiltered = 0;
+
+        // --- Filter ---
+        private static readonly DebugFilter _filter = new DebugFilter();
 
         // --- External context (set by Unity-side bridge) ---
         private static string _currentSceneName = "";
@@ -49,8 +60,9 @@ namespace SpaceSim.Debug
         // --- Callbacks ---
 
         /// <summary>
-        /// Optional callback invoked on every Log call. Allows Unity side
-        /// to forward to Debug.Log if desired.
+        /// Optional callback invoked on every Log call that PASSES the filter.
+        /// Allows Unity side to forward to Debug.Log if desired.
+        /// Filtered-out logs do NOT trigger this callback.
         /// </summary>
         public static Action<DebugEvent> OnEventLogged;
 
@@ -72,6 +84,19 @@ namespace SpaceSim.Debug
 
         /// <summary>Current session identifier.</summary>
         public static string SessionId => _sessionId;
+
+        /// <summary>
+        /// The active runtime filter instance.
+        /// Exposed so DebugFilterProfile can apply settings directly
+        /// during Play mode Inspector changes.
+        /// </summary>
+        public static DebugFilter ActiveFilter => _filter;
+
+        /// <summary>
+        /// Total number of log entries that were discarded by the filter.
+        /// Useful for diagnostics: if this grows rapidly, filter is active.
+        /// </summary>
+        public static int TotalEventsFiltered => _totalEventsFiltered;
 
         /// <summary>
         /// Set the Unity-side context that changes each frame.
@@ -129,7 +154,12 @@ namespace SpaceSim.Debug
         // Public API: Logging
         // ---------------------------------------------------------------
 
-        /// <summary>Log a structured debug event.</summary>
+        /// <summary>
+        /// Log a structured debug event.
+        /// The event is checked against the active DebugFilter before recording.
+        /// Events that fail the filter check are silently discarded (counter incremented).
+        /// Error-severity events ALWAYS pass the filter.
+        /// </summary>
         public static void Log(
             DebugCategory category,
             string message,
@@ -140,6 +170,13 @@ namespace SpaceSim.Debug
             long frame = 0)
         {
             if (!_enabled) return;
+
+            // Apply filter — errors always pass (enforced inside DebugFilter).
+            if (!_filter.IsAllowed(category, severity, source))
+            {
+                _totalEventsFiltered++;
+                return;
+            }
 
             var evt = new DebugEvent(
                 category, severity, message, source, data,
@@ -159,7 +196,7 @@ namespace SpaceSim.Debug
             OnEventLogged?.Invoke(evt);
         }
 
-        /// <summary>Shortcut for error logging.</summary>
+        /// <summary>Shortcut for error logging. Errors always pass the filter.</summary>
         public static void LogError(DebugCategory category, string message, string source = "", string data = "")
         {
             Log(category, message, DebugSeverity.Error, source, data);
@@ -213,6 +250,7 @@ namespace SpaceSim.Debug
         /// Violations are recorded as ERROR events and stored for bundle export.
         /// Returns the list of violations found.
         /// Auto-captures a snapshot if violations are found.
+        /// Note: invariant errors always pass the filter (Error severity).
         /// </summary>
         public static List<InvariantViolation> RunInvariantChecks()
         {
@@ -283,6 +321,7 @@ namespace SpaceSim.Debug
         /// <summary>
         /// Build a debug bundle in memory without writing to disk.
         /// Useful for tests or in-editor inspection.
+        /// Includes filter state in metadata so analysts know what was filtered.
         /// </summary>
         public static DebugBundle BuildBundle()
         {
@@ -302,7 +341,11 @@ namespace SpaceSim.Debug
                     ErrorBufferCapacity = ErrorBufferSize,
                     SnapshotBufferCapacity = SnapshotBufferSize,
                     TotalEventsLogged = _totalEventsLogged,
-                    TotalErrorsLogged = _totalErrorsLogged
+                    TotalErrorsLogged = _totalErrorsLogged,
+                    TotalEventsFiltered = _totalEventsFiltered,
+                    FilterSummary = _filter.GetFilterSummary(),
+                    MutedCategories = _filter.GetMutedCategoryNames(),
+                    MutedTags = _filter.GetMutedTagNames()
                 },
                 StatusSummary = GetStatus(),
                 RecentEvents = _events.ToList(),
@@ -323,13 +366,15 @@ namespace SpaceSim.Debug
         /// </summary>
         public static string GetStatus()
         {
+            string filterStr = _filter.GetFilterSummary();
             return $"[GameDebug] session={_sessionId} enabled={_enabled} " +
-                   $"events={_events.Count}/{EventBufferSize} (total={_totalEventsLogged}) " +
+                   $"events={_events.Count}/{EventBufferSize} (total={_totalEventsLogged}, filtered={_totalEventsFiltered}) " +
                    $"errors={_errors.Count}/{ErrorBufferSize} (total={_totalErrorsLogged}) " +
                    $"snapshots={_snapshots.Count}/{SnapshotBufferSize} " +
                    $"providers={SnapshotProviderRegistry.Count} " +
                    $"violations={_violations.Count} " +
-                   $"lastExport={(_lastExportPath == "" ? "none" : _lastExportPath)}";
+                   $"lastExport={(_lastExportPath == "" ? "none" : _lastExportPath)} " +
+                   $"{filterStr}";
         }
 
         // ---------------------------------------------------------------
@@ -338,6 +383,7 @@ namespace SpaceSim.Debug
 
         /// <summary>
         /// Clear all buffers and start a new session.
+        /// Does NOT reset filter settings.
         /// </summary>
         public static void Clear()
         {
@@ -349,6 +395,7 @@ namespace SpaceSim.Debug
             _lastExportPath = "";
             _totalEventsLogged = 0;
             _totalErrorsLogged = 0;
+            _totalEventsFiltered = 0;
         }
 
         /// <summary>Get a copy of all recent events.</summary>

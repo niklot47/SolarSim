@@ -1,7 +1,7 @@
 # ARCHITECTURE_STATE.md
 
 Current snapshot of project implementation status.
-Last updated after: Step 23 — Maneuver Planning Foundation, Iteration 3 + Bugfixes (ImmediateDirectScore + PlannedDepartureTime).
+Last updated after: Step 24 — Debug Log Filter System (hierarchical Inspector filter, DebugFilterProfile, live-apply).
 
 ------------------------------------------------------------------------
 
@@ -20,8 +20,42 @@ Last updated after: Step 23 — Maneuver Planning Foundation, Iteration 3 + Bugf
 - **IDebugSnapshotProvider** — interface for subsystem contributions
 - **BuiltInSnapshotProviders** — 5 providers: World, Ships, Economy, Docking, SOI
 - **DebugInvariantChecker** — 7 automated checks
-- **DebugExportUtility** — JSON serialization + file export
-- **DebugBundle** — complete export package
+- **DebugExportUtility** — JSON serialization + file export; filter state included in metadata
+- **DebugBundle** — complete export package with filter metadata
+
+### Debug Log Filter System (Step 24)
+- **DebugFilter** — pure C# runtime filter; checks category + source tag + severity; errors always pass
+- **DebugFilterProfile** — ScriptableObject with hierarchical filter groups; create via menu SpaceSim -> Create Debug Filter Profile
+- **DebugFilterGroup** — master toggle + list of DebugCategory names + child DebugTagToggle entries
+- **DebugFilterProfileEditor** — custom Inspector rendering groups as collapsible tree with indented tag checkboxes
+- **DebugFilterProfileCreator** — editor menu to create pre-configured default profile asset
+
+#### Filter architecture
+- GameDebug.Log() checks `DebugFilter.IsAllowed(category, severity, source)` before recording
+- Errors (severity == Error) **always pass** regardless of filter — invariant violations and crashes are never hidden
+- Filter applied at write time: filtered events never enter RingBuffer and never appear in bundle export
+- BundleMetadata includes `FilterSummary`, `MutedCategories`, `MutedTags`, `TotalEventsFiltered` so analysts know what was active
+- GameBootstrap holds `[SerializeField] DebugFilterProfile` — applied at startup via `ApplyTo(GameDebug.ActiveFilter)`
+- Live-apply during Play mode: DebugFilterProfileEditor calls `ApplyTo()` on every Inspector change; GameBootstrap.OnValidate() also re-applies
+- `GameDebug.ActiveFilter` exposed as public static for direct runtime access
+
+#### Default filter groups
+| Group | Categories | Source Tags |
+|---|---|---|
+| Navigation | SHIPS, PATH | Navigation, Docking |
+| Economy | ECONOMY | CargoTransfer, Production, TradeAI |
+| Orbits & SOI | ORBIT | SOI |
+| NPC | NPC | — |
+| Simulation | SIM | SystemLoader |
+| UI | UI | — |
+| Debug System | DEBUG | GameDebug, InvariantChecker |
+
+#### Usage workflow
+1. Create profile: SpaceSim menu → Create Debug Filter Profile (or Assets → Create → SpaceSim → Debug Filter Profile)
+2. Assign profile to GameBootstrap's `debugFilterProfile` field
+3. In Inspector, expand/collapse groups, toggle master switches and individual tags
+4. Changes apply live during Play mode — no restart needed
+5. Export bundle: filter state is recorded in metadata JSON
 
 ### Orbital Sandbox
 - **CelestialBody** — domain entity with orbital/spin data, parent-child hierarchy, ShipInfo, StationInfo, SOIRadius
@@ -49,79 +83,50 @@ Anti-jitter via `_lastFrameSwitchTime` (MinFrameSwitchInterval = 2.0 sim-s).
 ### Maneuver Planning Foundation (Step 23, Iteration 3 + Bugfixes)
 
 **ManeuverPlanner** — pure C# static helper in Simulation.Ships.
+- ImmediateDirectScore, PlannedDepartureTime, retry spam guard — see Step 23 docs.
 
-#### Bugfix 1 — misleading "poor alignment" log
+------------------------------------------------------------------------
 
-**Root cause:** When `ImmediateWasAvailable == true` the returned `ManeuverPlan.DirectScore`
-contained the *delayed* plan's score (e.g. 0.07) rather than the *immediate* plan's score
-(e.g. -0.45) that actually triggered the delay condition.
+## Debug Filter Coding Standards
 
-**Fix:** Added `ImmediateDirectScore` field to `ManeuverPlan`.
-- Populated to `bestImmPlan.DirectScore` in the `ImmediateWasAvailable` return path.
-- `ShipMovementSystem` now logs `mPlan.ImmediateDirectScore` in the "poor alignment" message.
-- `double.MinValue` when `ImmediateWasAvailable == false`.
+### When adding new GameDebug.Log() calls
 
-#### Bugfix 2 — NPCShipScheduler retry spam
+Every `GameDebug.Log()` call MUST include a meaningful `source:` parameter that serves as the filterable tag. Use existing tags where applicable:
 
-**Root cause:** `ScheduleNewRouteIfReady()` called `StartRoute()` every simulation tick because
-`_arrivalTimes` was never reset on failure. Each call found the same delayed window and logged
-the same message.
+| Source Tag | Used For |
+|---|---|
+| Navigation | Ship route planning, maneuver selection, frame switching |
+| Docking | Dock/undock lifecycle events |
+| CargoTransfer | Load/unload cargo operations |
+| Production | Station production cycle completions |
+| TradeAI | Trade route selection by NPC traders |
+| SOI | SOI boundary transitions |
+| SystemLoader | Star system loading from assets/JSON |
+| GameDebug | Debug system self-diagnostics |
+| InvariantChecker | Invariant violation details |
 
-**Fix (two-part):**
+When introducing a new subsystem, add a new source tag and register it in DebugFilterProfile.PopulateDefaults() under the appropriate group.
 
-1. **`PlannedDepartureTime` on `ShipInfo`:** When `StartRoute()` returns false with `IsDelayed == true`,
-   `ShipMovementSystem` sets `ship.ShipInfo.PlannedDepartureTime = mPlan.DepartureTime`.
-   Cleared to 0.0 when a route successfully starts.
+### When delivering a new feature step
 
-2. **Guard in NPCShipScheduler:** Both `ScheduleNewRouteIfReady` and `ScheduleDepartureFromStation`
-   check `ship.ShipInfo.PlannedDepartureTime` at entry and skip until that sim-time is reached.
-   On `!started`, `_arrivalTimes[ship.Id] = simTime` is also reset so `IdleDelay` acts as a
-   minimum retry interval for the all-blocked case (no planned window).
+Each step delivery MUST include:
+1. **Recommended filter profile** for testing — which groups/tags to enable, which to disable
+2. **Expected log output** — what log messages should appear with the recommended filter
+3. If new source tags are added: update to DebugFilterProfile.PopulateDefaults()
 
-#### ManeuverPlan struct fields summary
-
+Example:
 ```
-Score                — best-candidate score ∈ [0.94, 1.0] (always near ceiling)
-DirectScore          — candidate 0 alignment: immediate window when Success, delayed when IsDelayed
-ImmediateDirectScore — candidate 0 alignment of window 0 only; triggers the delay decision
-                       double.MinValue when ImmediateWasAvailable == false
+Рекомендуемый фильтр для тестирования Phase 25:
+  ✓ Navigation (все теги)
+  ✓ Orbits & SOI (все теги)
+  ✗ Economy (отключить целиком)
+  ✗ NPC (отключить целиком)
+  ✓ Debug System (все теги)
+
+Ожидаемые логи:
+  [SHIPS] [Nav] X: selected maneuver score ...
+  [ORBIT] [Nav] SOI: X: Terra → Sol ...
 ```
-
-#### Log messages (corrected)
-
-```
-[Nav] X: selected maneuver score 0.99 (direct 0.73) to Y
-[Nav] X: using offset variant #2 to Y (approach 60°, score 0.97, direct -0.41, blocked by Sol)
-[Nav] X: poor alignment (direct -0.52), searching better window to Y ~15s away   ← ImmediateDirectScore
-[Nav] X: waiting for better window to Y (blocked by Terra), delayed departure by 20s
-[Nav] X: all maneuver plans failed to Y (blocked by Terra)
-```
-
-#### PlannedDepartureTime flow
-
-```
-StartRoute() → ManeuverPlanner returns IsDelayed:
-  ship.ShipInfo.PlannedDepartureTime = mPlan.DepartureTime   (set)
-  return false
-
-StartRoute() → ManeuverPlanner returns Success:
-  ship.ShipInfo.PlannedDepartureTime = 0.0                   (clear)
-  commit route
-
-NPCShipScheduler.ScheduleNewRouteIfReady():
-  if PlannedDepartureTime > 0 && simTime < PlannedDepartureTime → skip
-  if !started → _arrivalTimes[ship.Id] = simTime             (reset idle delay)
-```
-
-#### Architecture health
-
-- `ManeuverPlanner` is pure C# in Simulation.Ships — no UnityEngine reference
-- `RouteSafetyChecker` unchanged — called inside ManeuverPlanner per candidate
-- `TransferPlannerLite` retained but not called from ShipMovementSystem
-- `BuildGlobalRoute` / `BuildLocalRoute` signatures unchanged from Phase 22
-- `ShipMovementSystem` is the sole integration point for planning
-- `ShipInfo.PlannedDepartureTime` is the contract between ShipMovementSystem and NPCShipScheduler
-- No LINQ in any planning path; zero heap allocations per candidate evaluation
 
 ------------------------------------------------------------------------
 
@@ -129,13 +134,11 @@ NPCShipScheduler.ScheduleNewRouteIfReady():
 
 | System | Notes |
 |---|---|
-| Burn Windows / Phase Alignment (Phase 24) | PlannedDepartureTime already on ShipInfo; NPCShipScheduler auto-depart at window |
-| Patched Conics Full (Phase 25) | True conic sections per SOI segment |
-| Delta-v / Energy Model (Phase 26) | Maneuver cost and route comparison |
-| Hohmann Helper (Phase 27) | Optional baseline estimator |
-| Advanced Transfers (Phase 28) | Lambert-lite, intercept, non-coplanar |
-| Accurate delayed ship position | Orbit integration for ManeuverPlanner delayed windows |
-| Adaptive DelayPreferenceThreshold | Per-ship or distance-based |
+| Burn Windows / Phase Alignment (Phase 25) | PlannedDepartureTime already on ShipInfo; NPCShipScheduler auto-depart at window |
+| Patched Conics Full (Phase 26) | True conic sections per SOI segment |
+| Delta-v / Energy Model (Phase 27) | Maneuver cost and route comparison |
+| Hohmann Helper (Phase 28) | Optional baseline estimator |
+| Advanced Transfers (Phase 29) | Lambert-lite, intercept, non-coplanar |
 | Prices / Money | Currency, buy/sell prices |
 | Player trading UI | Buy/sell interface |
 | Save/Load | WorldRegistry serialization |
@@ -144,17 +147,24 @@ NPCShipScheduler.ScheduleNewRouteIfReady():
 
 ------------------------------------------------------------------------
 
+## Architecture Health Notes
+
+### Clean boundaries maintained
+- DebugFilter is pure C# — no UnityEngine dependency
+- DebugFilterProfile is a ScriptableObject in Debug assembly (allowed — Debug assembly has noEngineReferences: false)
+- DebugFilterProfileEditor lives in Debug assembly under #if UNITY_EDITOR
+- GameBootstrap is the sole integration point between DebugFilterProfile and GameDebug
+- Filter logic runs at log-write time with zero heap allocations per check (HashSet lookups)
+- All existing simulation/world layer code unchanged — filter is transparent to callers
+
+### Known technical debt (inherited + new)
+- DebugFilterProfile.TryParseCategory uses switch statement instead of Enum.TryParse (avoids boxing/allocation, intentional)
+- DebugFilterProfile.PopulateDefaults() must be manually updated when new source tags are added — not auto-discovered
+- No runtime UI for filter control — Inspector only (acceptable for development phase)
+
+------------------------------------------------------------------------
+
 ## Next Recommended Development Phase
 
-### Phase 24 — Burn Windows / Phase Alignment
-
-`PlannedDepartureTime` is already stored on `ShipInfo` (added in bugfix).
-
-Goals:
-- NPCShipScheduler: detect when `PlannedDepartureTime` is reached and depart automatically
-  without waiting for the next IdleDelay cycle.
-- ManeuverPlanner: phase-angle heuristic to estimate time-to-favorable-window more precisely.
-- Ships visibly wait for windows then depart at the predicted time.
-- Reduces retry noise compared to current periodic-check approach.
-
-### Phase 25–28 — (unchanged from previous plan)
+### Phase 25 — Burn Windows / Phase Alignment
+(unchanged from Step 23)

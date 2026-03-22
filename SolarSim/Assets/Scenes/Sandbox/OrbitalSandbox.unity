@@ -368,6 +368,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Bootstrap.GameBootstrap
   enableDebugSystem: 1
+  debugFilterProfile: {fileID: 11400000, guid: 24c6aaecd6189e34aa9257814eaf8d33, type: 2}
   sandboxCoordinator: {fileID: 81263133}
 --- !u!4 &284047943
 Transform:

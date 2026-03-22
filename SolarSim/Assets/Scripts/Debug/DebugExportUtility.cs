@@ -42,7 +42,11 @@ namespace SpaceSim.Debug
             WriteInt(sb, "errorBufferCapacity", bundle.Metadata.ErrorBufferCapacity, 4);
             WriteInt(sb, "snapshotBufferCapacity", bundle.Metadata.SnapshotBufferCapacity, 4);
             WriteInt(sb, "totalEventsLogged", bundle.Metadata.TotalEventsLogged, 4);
-            WriteIntLast(sb, "totalErrorsLogged", bundle.Metadata.TotalErrorsLogged, 4);
+            WriteInt(sb, "totalErrorsLogged", bundle.Metadata.TotalErrorsLogged, 4);
+            WriteInt(sb, "totalEventsFiltered", bundle.Metadata.TotalEventsFiltered, 4);
+            WriteString(sb, "filterSummary", bundle.Metadata.FilterSummary, 4);
+            WriteStringArray(sb, "mutedCategories", bundle.Metadata.MutedCategories, 4);
+            WriteStringArrayLast(sb, "mutedTags", bundle.Metadata.MutedTags, 4);
             sb.AppendLine("  },");
 
             // Status.
@@ -227,6 +231,40 @@ namespace SpaceSim.Debug
         {
             sb.AppendLine(string.Format(Inv, "{0}\"{1}\": {2:F2},",
                 new string(' ', indent), name, value));
+        }
+
+        private static void WriteStringArray(StringBuilder sb, string name, List<string> values, int indent)
+        {
+            string pad = new string(' ', indent);
+            if (values == null || values.Count == 0)
+            {
+                sb.AppendLine(string.Format(Inv, "{0}\"{1}\": [],", pad, name));
+                return;
+            }
+            sb.Append(string.Format(Inv, "{0}\"{1}\": [", pad, name));
+            for (int i = 0; i < values.Count; i++)
+            {
+                sb.Append(string.Format(Inv, "\"{0}\"", Escape(values[i])));
+                if (i < values.Count - 1) sb.Append(",");
+            }
+            sb.AppendLine("],");
+        }
+
+        private static void WriteStringArrayLast(StringBuilder sb, string name, List<string> values, int indent)
+        {
+            string pad = new string(' ', indent);
+            if (values == null || values.Count == 0)
+            {
+                sb.AppendLine(string.Format(Inv, "{0}\"{1}\": []", pad, name));
+                return;
+            }
+            sb.Append(string.Format(Inv, "{0}\"{1}\": [", pad, name));
+            for (int i = 0; i < values.Count; i++)
+            {
+                sb.Append(string.Format(Inv, "\"{0}\"", Escape(values[i])));
+                if (i < values.Count - 1) sb.Append(",");
+            }
+            sb.AppendLine("]");
         }
 
         private static void WriteValue(StringBuilder sb, object value)

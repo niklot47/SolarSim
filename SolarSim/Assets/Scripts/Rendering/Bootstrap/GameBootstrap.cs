@@ -23,6 +23,10 @@ namespace SpaceSim.Rendering.Bootstrap
         [Header("Debug")]
         [SerializeField] private bool enableDebugSystem = true;
 
+        [Tooltip("Assign a DebugFilterProfile asset to control which log categories/tags are active. " +
+                 "Create via: SpaceSim -> Create Debug Filter Profile.")]
+        [SerializeField] private DebugFilterProfile debugFilterProfile;
+
         [Header("Sandbox")]
         [SerializeField] private OrbitalSandboxCoordinator sandboxCoordinator;
 
@@ -48,6 +52,12 @@ namespace SpaceSim.Rendering.Bootstrap
             GameDebug.Enabled = enableDebugSystem;
             GameDebug.OnEventLogged = ForwardToUnityLog;
 
+            // 3. Apply debug filter profile.
+            if (debugFilterProfile != null)
+            {
+                debugFilterProfile.ApplyTo(GameDebug.ActiveFilter);
+            }
+
             // Set export directory to persistentDataPath/debug_bundles.
             string exportDir = System.IO.Path.Combine(
                 Application.persistentDataPath, "debug_bundles");
@@ -57,7 +67,7 @@ namespace SpaceSim.Rendering.Bootstrap
                 source: nameof(GameBootstrap),
                 sceneName: gameObject.scene.name);
 
-            // 3. Orbital sandbox (if coordinator is assigned).
+            // 4. Orbital sandbox (if coordinator is assigned).
             if (sandboxCoordinator != null)
             {
                 sandboxCoordinator.Setup(Clock);
@@ -99,6 +109,7 @@ namespace SpaceSim.Rendering.Bootstrap
 
         /// <summary>
         /// Bridge: forwards debug events to Unity console.
+        /// Only called for events that passed the filter.
         /// </summary>
         private static void ForwardToUnityLog(DebugEvent evt)
         {
@@ -119,6 +130,18 @@ namespace SpaceSim.Rendering.Bootstrap
 
         // --- Editor convenience ---
 #if UNITY_EDITOR
+        /// <summary>
+        /// Re-apply filter profile when Inspector values change during Play mode.
+        /// This enables live-tweaking of filter settings without restarting.
+        /// </summary>
+        private void OnValidate()
+        {
+            if (Application.isPlaying && debugFilterProfile != null)
+            {
+                debugFilterProfile.ApplyTo(GameDebug.ActiveFilter);
+            }
+        }
+
         [ContextMenu("Debug/Печать статуса")]
         private void PrintStatus()
         {
@@ -167,6 +190,12 @@ namespace SpaceSim.Rendering.Bootstrap
             GameDebug.RunInvariantChecks();
             string path = GameDebug.ExportBundle();
             UnityEngine.Debug.Log($"[GameDebug] Full dump: {path}");
+        }
+
+        [ContextMenu("Debug/Показать фильтр")]
+        private void EditorShowFilter()
+        {
+            UnityEngine.Debug.Log($"[GameDebug] {GameDebug.ActiveFilter.GetFilterSummary()}");
         }
 #endif
     }

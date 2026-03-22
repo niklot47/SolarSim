@@ -64,6 +64,7 @@ namespace SpaceSim.Debug
 
     /// <summary>
     /// Metadata header for the debug bundle.
+    /// Includes filter state so analysts know which log categories/tags were active.
     /// </summary>
     [Serializable]
     public class BundleMetadata
@@ -78,6 +79,30 @@ namespace SpaceSim.Debug
         public int SnapshotBufferCapacity;
         public int TotalEventsLogged;
         public int TotalErrorsLogged;
+
+        /// <summary>
+        /// Number of log entries discarded by the active filter.
+        /// A non-zero value indicates some logs were intentionally hidden.
+        /// </summary>
+        public int TotalEventsFiltered;
+
+        /// <summary>
+        /// Human-readable summary of the active filter state at export time.
+        /// Example: "FILTER: muted_categories=[ECONOMY] muted_tags=[CargoTransfer,Production]"
+        /// </summary>
+        public string FilterSummary;
+
+        /// <summary>
+        /// List of category names that were muted at export time.
+        /// Empty when all categories are enabled.
+        /// </summary>
+        public List<string> MutedCategories = new List<string>();
+
+        /// <summary>
+        /// List of source tag names that were muted at export time.
+        /// Empty when all tags are enabled.
+        /// </summary>
+        public List<string> MutedTags = new List<string>();
     }
 
     // ---------------------------------------------------------------

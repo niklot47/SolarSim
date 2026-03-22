@@ -29,11 +29,11 @@ Key files:
 - `Scripts/Simulation/Orbits/OrbitalPositionCalculator.cs` — full Keplerian orbit position
 - `Scripts/Simulation/Orbits/KeplerSolver.cs` — Newton-Raphson solver for Kepler's equation
 - `Scripts/Simulation/Orbits/OrbitSampler.cs` — adaptive orbit geometry sampling
-- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — SOI-aware travel; phased orbit insertion; HandleSOITransition(); anti-jitter cooldown; Phase 21: RouteSafetyChecker; Phase 22: TransferPlannerLite; Phase 23: ManeuverPlanner; **Bugfix: logs ImmediateDirectScore in "poor alignment" message; sets PlannedDepartureTime on delayed plan, clears on success**
-- `Scripts/Simulation/Ships/RouteSafetyChecker.cs` — **(Phase 21)** pure C# static helper; validates planned route segment; no allocations; called inside ManeuverPlanner
-- `Scripts/Simulation/Ships/TransferPlannerLite.cs` — **(Phase 22)** retained reference; superseded by ManeuverPlanner
-- `Scripts/Simulation/Ships/ManeuverPlanner.cs` — **(Phase 23 + Bugfix)** pure C# static helper; evaluates ALL safe candidates across immediate + delayed windows; scores by alignment with target velocity; **Bugfix: adds ImmediateDirectScore field to ManeuverPlan (immediate window's DirectScore, used in "poor alignment" log); adds GetWindowInterval() helper**
-- `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing; **Bugfix: checks ship.ShipInfo.PlannedDepartureTime before calling StartRoute(); resets _arrivalTimes on !started to prevent tight retry loop**
+- `Scripts/Simulation/Ships/ShipMovementSystem.cs` — SOI-aware travel; ManeuverPlanner integration; PlannedDepartureTime
+- `Scripts/Simulation/Ships/RouteSafetyChecker.cs` — route collision validation
+- `Scripts/Simulation/Ships/TransferPlannerLite.cs` — retained reference; superseded by ManeuverPlanner
+- `Scripts/Simulation/Ships/ManeuverPlanner.cs` — multi-window maneuver planning with geometry scoring
+- `Scripts/Simulation/Ships/NPCShipScheduler.cs` — demand-driven trader routing; PlannedDepartureTime guard
 - `Scripts/Simulation/SOI/SOIResolver.cs` — sphere of influence resolution
 - `Scripts/Simulation/Docking/DockingSystem.cs` — docking lifecycle
 - `Scripts/Simulation/Economy/CargoTransferService.cs` — cargo transfer operations
@@ -48,30 +48,43 @@ Key files:
 
 Game domain entities and shared world state models.
 
-Key files (changed):
-- `Scripts/World/Entities/ShipInfo.cs` — **Bugfix: added `PlannedDepartureTime` (double, default 0.0); set by ShipMovementSystem when ManeuverPlanner returns a delayed window; read by NPCShipScheduler to prevent retry spam**
+Key files:
+- `Scripts/World/Entities/ShipInfo.cs` — includes `PlannedDepartureTime` field
+- (all other World files unchanged)
 
 ### 3. Rendering
 
 Key files:
-- `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point
-- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services; Phase 21 inspector fields unchanged
+- `Scripts/Rendering/Bootstrap/GameBootstrap.cs` — Unity entry point; **holds `[SerializeField] DebugFilterProfile` reference; applies filter at startup and on OnValidate**
+- `Scripts/Rendering/Bootstrap/OrbitalSandboxCoordinator.cs` — wires all services
 - `Scripts/Rendering/Bootstrap/StarSystemLoader.cs` — converts ScriptableObject definitions to build data
-- `Scripts/Rendering/Orbits/OrbitalMapRenderer.cs` — scene visuals, orbit lines via OrbitSampler
-- `Scripts/Rendering/Planets/CelestialBodyView.cs` — body visual representation
-- `Scripts/Rendering/Cameras/OrbitalCameraController.cs` — camera controls
-- `Scripts/Rendering/Selection/SelectionBridge.cs` — selection ring + highlight
-- `Scripts/Rendering/Selection/BodyClickHandler.cs` — raycast click selection
-- `Scripts/Rendering/Selection/UIInputBlocker.cs` — blocks camera input over UI
-- `Scripts/Rendering/Labels/BodyLabelController.cs` — IMGUI labels clipped to viewport
+- (all other Rendering files unchanged)
 
 ### 4. UI
 
 Key files: unchanged.
 
-### 5. Data / Shared / Debug
+### 5. Data / Shared
 
 Unchanged.
+
+### Debug
+
+Structured debug event and snapshot system for AI-assisted debugging. Exports JSON bundles to disk for offline analysis. **Includes configurable log filter system with hierarchical Inspector UI.**
+
+Key files:
+- `Scripts/Debug/GameDebug.cs` — static API; **Log() checks DebugFilter before recording; ActiveFilter property; TotalEventsFiltered counter**
+- `Scripts/Debug/DebugFilter.cs` — **(Step 24)** pure C# runtime filter; category + source tag + severity checks; errors always pass; thread-safe
+- `Scripts/Debug/DebugFilterProfile.cs` — **(Step 24)** ScriptableObject with hierarchical DebugFilterGroup list; PopulateDefaults() creates standard groups; ApplyTo(DebugFilter) method
+- `Scripts/Debug/DebugFilterProfileEditor.cs` — **(Step 24)** custom Inspector; tree view with foldout groups, master toggles, indented child tag toggles; live-apply during Play mode
+- `Scripts/Debug/DebugFilterProfileCreator.cs` — **(Step 24)** editor menu to create default profile asset
+- `Scripts/Debug/DebugEvent.cs` — structured event model with category, severity, timestamp
+- `Scripts/Debug/DebugModels.cs` — DebugSnapshot, SubsystemSnapshot, DebugBundle, BundleMetadata **(extended with FilterSummary, MutedCategories, MutedTags, TotalEventsFiltered)**, InvariantViolation
+- `Scripts/Debug/RingBuffer.cs` — bounded collection
+- `Scripts/Debug/DebugSnapshotProviders.cs` — IDebugSnapshotProvider interface + SnapshotProviderRegistry
+- `Scripts/Debug/DebugInvariantChecker.cs` — 7 invariant checks
+- `Scripts/Debug/DebugExportUtility.cs` — JSON serialization + file export; **serializes filter metadata fields**
+- `Scripts/Debug/BuiltInSnapshotProviders.cs` — 5 providers
 
 ------------------------------------------------------------------------
 
@@ -89,43 +102,73 @@ Unchanged.
 
 ------------------------------------------------------------------------
 
-## Route Planning and Safety Pipeline (Phases 21 + 22 + 23 + Bugfixes)
+## Debug Filter System (Step 24)
+
+### Architecture
 
 ```
-ShipMovementSystem.StartRoute()
-    ↓
-ComputeShipWorldPosition()
-approachRadius = destOrbitRadius × OrbitApproachMultiplier
-
-if ImpactSafetyEnabled:
-    ManeuverPlanner.Plan(...)
-    [5 windows × 10 candidates — see ManeuverPlanner docs]
-
-    if !mPlan.Success:
-      if IsDelayed:
-        ship.ShipInfo.PlannedDepartureTime = mPlan.DepartureTime    ← NEW
-        if ImmediateWasAvailable:
-          log "poor alignment (direct {ImmediateDirectScore})"       ← FIXED
-        else:
-          log "delayed departure by Y seconds"
-      else:
-        log "all maneuver plans failed"
-      return false
-
-    ship.ShipInfo.PlannedDepartureTime = 0.0                         ← NEW
-    log success
-
-BuildGlobalRoute / BuildLocalRoute
-commit ship state → ShipState.Travelling
-
-NPCShipScheduler.ScheduleNewRouteIfReady():
-    if PlannedDepartureTime > 0 && simTime < PlannedDepartureTime:
-        return                                                        ← NEW
-    ... idle delay check ...
-    bool started = StartRoute(...)
-    if !started:
-        _arrivalTimes[ship.Id] = simTime                             ← NEW
+DebugFilterProfile (ScriptableObject, authored in Inspector)
+    contains: List<DebugFilterGroup>
+    each group: DisplayName, Enabled (master), List<string> Categories, List<DebugTagToggle> Tags
+    |
+    v
+GameBootstrap.Initialize()
+    debugFilterProfile.ApplyTo(GameDebug.ActiveFilter)
+    |
+    v
+DebugFilter (pure C# runtime instance, static on GameDebug)
+    IsAllowed(category, severity, sourceTag) → bool
+    Errors ALWAYS pass
+    |
+    v
+GameDebug.Log()
+    if (!_filter.IsAllowed(...)) { _totalEventsFiltered++; return; }
+    → event enters RingBuffer → forwarded to Unity console via OnEventLogged
+    |
+    v
+DebugExportUtility.BundleToJson()
+    BundleMetadata includes: FilterSummary, MutedCategories, MutedTags, TotalEventsFiltered
 ```
+
+### Inspector tree rendering
+
+```
+[DebugFilterProfile Inspector]
+
+Global Settings:
+  [✓] Enable Logging
+  Minimum Severity: [Info ▾]
+
+[Enable All] [Disable All] [Reset Defaults]
+
+Filter Groups:
+  ┌─────────────────────────────────────────┐
+  │ ▼ [✓] Navigation              [SHIPS,PATH] │
+  │      [✓] Navigation                        │
+  │      [✓] Docking                           │
+  ├─────────────────────────────────────────┤
+  │ ▼ [✓] Economy                  [ECONOMY]   │
+  │      [✓] CargoTransfer                     │
+  │      [✓] Production                        │
+  │      [✓] TradeAI                           │
+  ├─────────────────────────────────────────┤
+  │ ▶ [✗] Orbits & SOI             [ORBIT]     │  ← collapsed, disabled
+  └─────────────────────────────────────────┘
+```
+
+### Source tag registry
+
+| Source Tag | Category | Description |
+|---|---|---|
+| Navigation | SHIPS | Route planning, maneuver scores, frame switching, orbit insertion |
+| Docking | SHIPS | Dock/undock lifecycle |
+| CargoTransfer | ECONOMY | Ship load/unload at stations |
+| Production | ECONOMY | Station production cycle completions |
+| TradeAI | ECONOMY | Trader route selection decisions |
+| SOI | ORBIT | SOI boundary transitions |
+| SystemLoader | SIM | Star system loading from assets/JSON |
+| GameDebug | DEBUG | Debug system self-diagnostics |
+| InvariantChecker | DEBUG | Invariant violation details |
 
 ------------------------------------------------------------------------
 
@@ -135,18 +178,9 @@ NPCShipScheduler.ScheduleNewRouteIfReady():
 ShipMovementSystem.Update()
 DockingSystem.Update()
 NPCShipScheduler.Update()
-    → ScheduleNewRouteIfReady / ScheduleDepartureFromStation
-        → PlannedDepartureTime guard (skip if window not yet open)
-        → ShipMovementSystem.StartRoute()
-            → ManeuverPlanner.Plan()
-                EvaluateWindow() × 5 (1 imm + 4 del)
-                    → RouteSafetyChecker.IsSafe() × ≤50
-            → set/clear PlannedDepartureTime on ShipInfo
-        → Build route with chosen approach geometry
 StationProductionSystem.Update()
 [Periodic] StationDemandEvaluator + TradeOpportunityResolver
 SOIResolver.UpdateAllShips()
-    → ShipMovementSystem.HandleSOITransition()
 ```
 
 ------------------------------------------------------------------------
@@ -160,6 +194,14 @@ SOIResolver.UpdateAllShips()
 - Composition over inheritance, explicit dependencies, single responsibility
 - Inspector-serialized fields: use float (not double) for Unity compatibility
 
+### Debug logging standards (Step 24)
+
+- Every `GameDebug.Log()` call MUST include `source:` parameter with a registered tag name
+- New source tags must be added to `DebugFilterProfile.PopulateDefaults()` under the appropriate group
+- Error-severity logs must never depend on filter state — they always pass
+- Each feature delivery must include recommended filter settings for testing
+- Source tags use PascalCase, one or two words maximum (e.g. "CargoTransfer", not "cargo_transfer_service")
+
 ------------------------------------------------------------------------
 
 ## Strategic Direction — Road to Full Physics
@@ -168,15 +210,10 @@ Completed:
 1. Impact / Collision Check Foundation ✓ (Phase 21)
 2. Transfer Planning Lite ✓ (Phase 22)
 3. Maneuver Planning Foundation ✓ (Phase 23, Iterations 1–3 + Bugfixes)
+4. Debug Log Filter System ✓ (Step 24)
 
-### Phase 24 — Burn Windows / Phase Alignment
-
-`PlannedDepartureTime` is already on `ShipInfo`. Phase 24 promotes it to a proper scheduling mechanism:
-- NPCShipScheduler departs automatically when the window opens (no manual retry polling).
-- ManeuverPlanner phase-angle heuristic for better window time estimation.
-- Ships intentionally wait, then depart at the predicted time.
-
-### Phase 25 — Patched Conics Full
-### Phase 26 — Delta-v / Energy Model
-### Phase 27 — Hohmann Helper (Optional)
-### Phase 28 — Advanced Transfers (Lambert-lite / Intercept)
+### Phase 25 — Burn Windows / Phase Alignment
+### Phase 26 — Patched Conics Full
+### Phase 27 — Delta-v / Energy Model
+### Phase 28 — Hohmann Helper (Optional)
+### Phase 29 — Advanced Transfers (Lambert-lite / Intercept)
