@@ -8,74 +8,22 @@ using SpaceSim.World.Systems;
 namespace SpaceSim.Simulation.Ships
 {
     /// <summary>
-    /// Builds a list of RouteSegments for a ship route based on the origin/destination
-    /// hierarchy and SOI structure.
+    /// Builds route segments for patched-conics ship routes.
     ///
-    /// Segment generation rules:
+    /// Phase 26d fix: OrbitInsertion endpoint is placed at the tangent-aligned point
+    /// on the orbit circle (where orbit tangent is parallel to approach direction),
+    /// not at the closest radial point. This eliminates the loop/reversal artifact.
     ///
-    /// Case 1: Same parent (e.g. Terra → Luna, both inside Sol's SOI but same local parent)
-    ///   LocalOrbitDeparture → LocalTransfer → OrbitInsertion
-    ///
-    /// Case 2: Different parent, common ancestor is star (interplanetary)
-    ///   LocalOrbitDeparture → SOIExit → HeliocentricTransfer → SOIEntry → OrbitInsertion
-    ///
-    /// Case 3: Parent-to-child or child-to-parent (e.g. Terra → Luna as parent/child)
-    ///   LocalOrbitDeparture → LocalTransfer → OrbitInsertion
-    ///
-    /// IMPORTANT:
-    ///   - Keep it SIMPLE — straight-line approximation per segment
-    ///   - No Lambert solver, no delta-v, no real physics burns
-    ///   - Segments define reference frames explicitly
-    ///   - Position interpolation uses local coords relative to reference body
-    ///
-    /// Phase 26a: builds segments and attaches to ShipRoute.Segments.
-    /// Phase 26b: ShipMovementSystem reads and executes segments.
-    ///
-    /// Pure C# — no UnityEngine dependency. Lives in Simulation layer.
+    /// Pure C# — no UnityEngine dependency.
     /// </summary>
     public static class RouteSegmentBuilder
     {
-        /// <summary>
-        /// Fraction of total travel duration allocated to departure phase.
-        /// </summary>
         private const double DepartureFraction = 0.10;
-
-        /// <summary>
-        /// Fraction of total travel duration allocated to SOI exit phase.
-        /// </summary>
         private const double SOIExitFraction = 0.05;
-
-        /// <summary>
-        /// Fraction of total travel duration allocated to SOI entry phase.
-        /// </summary>
         private const double SOIEntryFraction = 0.05;
-
-        /// <summary>
-        /// Fraction of total travel duration allocated to orbit insertion phase.
-        /// </summary>
         private const double InsertionFraction = 0.10;
-
-        /// <summary>
-        /// Minimum segment duration in sim-seconds to avoid degenerate segments.
-        /// </summary>
         private const double MinSegmentDuration = 0.1;
 
-        /// <summary>
-        /// Build route segments for a ship route.
-        /// Analyzes the origin/destination hierarchy to determine the segment pattern.
-        /// Attaches segments to route.Segments and resets CurrentSegmentIndex to 0.
-        ///
-        /// Does NOT set route.UseSegmentedRoute = true (that's Phase 26b's job).
-        /// </summary>
-        /// <param name="route">The ShipRoute to populate with segments.</param>
-        /// <param name="originBody">Origin body the ship is departing from.</param>
-        /// <param name="arrivalParent">The body the ship will orbit at destination.</param>
-        /// <param name="shipWorldPos">Ship's world position at departure time.</param>
-        /// <param name="approachWorldPos">Target approach point in world coords.</param>
-        /// <param name="departureTime">Simulation time of departure.</param>
-        /// <param name="travelDuration">Total travel duration in sim-seconds.</param>
-        /// <param name="registry">World registry for hierarchy lookups.</param>
-        /// <param name="positionResolver">Position resolver delegate.</param>
         public static void BuildSegments(
             ShipRoute route,
             CelestialBody originBody,
@@ -93,7 +41,6 @@ namespace SpaceSim.Simulation.Ships
             route.Segments.Clear();
             route.CurrentSegmentIndex = 0;
 
-            // Determine relationship between origin and destination.
             EntityId commonParentId = FindCommonParent(originBody, arrivalParent, registry);
             bool isLocal = IsLocalTransfer(originBody, arrivalParent, commonParentId, registry);
 
@@ -113,11 +60,13 @@ namespace SpaceSim.Simulation.Ships
                     departureTime, travelDuration,
                     registry, positionResolver);
             }
+
+            // Configure smooth Bezier curve on the final insertion segment.
+            ConfigureInsertionCurve(route);
         }
 
         // ---------------------------------------------------------------
-        // Local transfer: same parent or parent/child relationship
-        // Segments: Departure → LocalTransfer → Insertion
+        // Local: Departure → LocalTransfer → Insertion
         // ---------------------------------------------------------------
 
         private static void BuildLocalSegments(
@@ -132,8 +81,9 @@ namespace SpaceSim.Simulation.Ships
             WorldRegistry registry,
             Func<EntityId, double, SimVec3> positionResolver)
         {
-            // Determine the local frame body.
-            EntityId frameBodyId = localFrameBodyId.IsValid ? localFrameBodyId : FindBestLocalFrame(originBody, arrivalParent, registry);
+            EntityId frameBodyId = localFrameBodyId.IsValid
+                ? localFrameBodyId
+                : FindBestLocalFrame(originBody, arrivalParent, registry);
             if (!frameBodyId.IsValid) frameBodyId = originBody.Id;
 
             double depDuration = Math.Max(travelDuration * DepartureFraction, MinSegmentDuration);
@@ -143,9 +93,7 @@ namespace SpaceSim.Simulation.Ships
             double t0 = departureTime;
             double t1 = t0 + depDuration;
             double t2 = t1 + transferDuration;
-            double t3 = t2 + insDuration;
 
-            // Resolve positions in local frame.
             SimVec3 frameAtT0 = positionResolver != null ? positionResolver(frameBodyId, t0) : SimVec3.Zero;
             SimVec3 frameAtT1 = positionResolver != null ? positionResolver(frameBodyId, t1) : SimVec3.Zero;
             SimVec3 frameAtT2 = positionResolver != null ? positionResolver(frameBodyId, t2) : SimVec3.Zero;
@@ -153,12 +101,10 @@ namespace SpaceSim.Simulation.Ships
             SimVec3 shipLocalStart = shipWorldPos - frameAtT0;
             SimVec3 approachLocal = approachWorldPos - frameAtT2;
 
-            // Interpolate an intermediate point for the departure endpoint.
             double depFrac = depDuration / travelDuration;
             SimVec3 depEndLocal = Lerp(shipLocalStart, approachLocal, depFrac);
 
-            // Departure segment.
-            var departure = new RouteSegment
+            route.Segments.Add(new RouteSegment
             {
                 Type = SegmentType.LocalOrbitDeparture,
                 ReferenceBodyId = originBody.Id,
@@ -168,11 +114,9 @@ namespace SpaceSim.Simulation.Ships
                 EndLocalPosition = (frameAtT0 + depEndLocal) - (positionResolver != null ? positionResolver(originBody.Id, t1) : SimVec3.Zero),
                 CachedWorldStart = shipWorldPos,
                 CachedWorldEnd = frameAtT1 + depEndLocal
-            };
-            route.Segments.Add(departure);
+            });
 
-            // Local transfer segment.
-            var transfer = new RouteSegment
+            route.Segments.Add(new RouteSegment
             {
                 Type = SegmentType.LocalTransfer,
                 ReferenceBodyId = frameBodyId,
@@ -182,29 +126,29 @@ namespace SpaceSim.Simulation.Ships
                 EndLocalPosition = approachLocal,
                 CachedWorldStart = frameAtT1 + depEndLocal,
                 CachedWorldEnd = approachWorldPos
-            };
-            route.Segments.Add(transfer);
+            });
 
-            // Orbit insertion segment.
-            var insertion = new RouteSegment
+            // Insertion: endpoint is computed by ConfigureInsertionCurve later,
+            // but we need an initial EndLocalPosition. Use approach direction scaled to orbit radius.
+            SimVec3 insertionStart = approachWorldPos - (positionResolver != null ? positionResolver(arrivalParent.Id, t2) : SimVec3.Zero);
+
+            route.Segments.Add(new RouteSegment
             {
                 Type = SegmentType.OrbitInsertion,
                 ReferenceBodyId = arrivalParent.Id,
                 StartTime = t2,
                 Duration = insDuration,
-                StartLocalPosition = approachWorldPos - (positionResolver != null ? positionResolver(arrivalParent.Id, t2) : SimVec3.Zero),
-                EndLocalPosition = ComputeInsertionTarget(route, approachWorldPos, arrivalParent, positionResolver, t2),
+                StartLocalPosition = insertionStart,
+                EndLocalPosition = SimVec3.Zero, // Overwritten by ConfigureInsertionCurve.
                 CachedWorldStart = approachWorldPos,
                 DestinationOrbitRadius = route.DestinationOrbitRadius,
                 DestinationOrbitPeriod = route.DestinationOrbitPeriod,
                 ArrivalAngleDeg = route.ArrivalOrbitPhaseDeg
-            };
-            route.Segments.Add(insertion);
+            });
         }
 
         // ---------------------------------------------------------------
-        // Interplanetary transfer: different parents, through star frame
-        // Segments: Departure → SOIExit → HeliocentricTransfer → SOIEntry → Insertion
+        // Interplanetary: Departure → SOIExit → Helio → SOIEntry → Insertion
         // ---------------------------------------------------------------
 
         private static void BuildInterplanetarySegments(
@@ -219,7 +163,6 @@ namespace SpaceSim.Simulation.Ships
             WorldRegistry registry,
             Func<EntityId, double, SimVec3> positionResolver)
         {
-            // Use common parent (usually star) as heliocentric frame.
             EntityId helioFrameId = commonParentId.IsValid ? commonParentId : EntityId.None;
 
             double depDuration = Math.Max(travelDuration * DepartureFraction, MinSegmentDuration);
@@ -235,10 +178,8 @@ namespace SpaceSim.Simulation.Ships
             double t2 = t1 + exitDuration;
             double t3 = t2 + cruiseDuration;
             double t4 = t3 + entryDuration;
-            double t5 = t4 + insDuration;
 
-            // Compute interpolation waypoints along the straight-line path.
-            double frac1 = (depDuration) / travelDuration;
+            double frac1 = depDuration / travelDuration;
             double frac2 = (depDuration + exitDuration) / travelDuration;
             double frac3 = (depDuration + exitDuration + cruiseDuration) / travelDuration;
             double frac4 = (depDuration + exitDuration + cruiseDuration + entryDuration) / travelDuration;
@@ -248,7 +189,6 @@ namespace SpaceSim.Simulation.Ships
             SimVec3 wp3 = Lerp(shipWorldPos, approachWorldPos, frac3);
             SimVec3 wp4 = Lerp(shipWorldPos, approachWorldPos, frac4);
 
-            // 1. Departure from origin body.
             SimVec3 originAtT0 = positionResolver != null ? positionResolver(originBody.Id, t0) : SimVec3.Zero;
             SimVec3 originAtT1 = positionResolver != null ? positionResolver(originBody.Id, t1) : SimVec3.Zero;
 
@@ -256,79 +196,62 @@ namespace SpaceSim.Simulation.Ships
             {
                 Type = SegmentType.LocalOrbitDeparture,
                 ReferenceBodyId = originBody.Id,
-                StartTime = t0,
-                Duration = depDuration,
+                StartTime = t0, Duration = depDuration,
                 StartLocalPosition = shipWorldPos - originAtT0,
                 EndLocalPosition = wp1 - originAtT1,
-                CachedWorldStart = shipWorldPos,
-                CachedWorldEnd = wp1
+                CachedWorldStart = shipWorldPos, CachedWorldEnd = wp1
             });
 
-            // 2. SOI Exit — transition from origin SOI to heliocentric frame.
-            // Use origin's parent as the frame (one level up).
             EntityId originParentId = originBody.ParentId.IsValid ? originBody.ParentId : helioFrameId;
-            SimVec3 originParentAtT1 = positionResolver != null && originParentId.IsValid
-                ? positionResolver(originParentId, t1) : SimVec3.Zero;
-            SimVec3 originParentAtT2 = positionResolver != null && originParentId.IsValid
-                ? positionResolver(originParentId, t2) : SimVec3.Zero;
+            SimVec3 opAtT1 = positionResolver != null && originParentId.IsValid ? positionResolver(originParentId, t1) : SimVec3.Zero;
+            SimVec3 opAtT2 = positionResolver != null && originParentId.IsValid ? positionResolver(originParentId, t2) : SimVec3.Zero;
 
             route.Segments.Add(new RouteSegment
             {
                 Type = SegmentType.SOIExit,
                 ReferenceBodyId = originParentId,
-                StartTime = t1,
-                Duration = exitDuration,
-                StartLocalPosition = wp1 - originParentAtT1,
-                EndLocalPosition = wp2 - originParentAtT2,
-                CachedWorldStart = wp1,
-                CachedWorldEnd = wp2
+                StartTime = t1, Duration = exitDuration,
+                StartLocalPosition = wp1 - opAtT1,
+                EndLocalPosition = wp2 - opAtT2,
+                CachedWorldStart = wp1, CachedWorldEnd = wp2
             });
 
-            // 3. Heliocentric transfer (cruise).
-            SimVec3 helioAtT2 = positionResolver != null && helioFrameId.IsValid
-                ? positionResolver(helioFrameId, t2) : SimVec3.Zero;
-            SimVec3 helioAtT3 = positionResolver != null && helioFrameId.IsValid
-                ? positionResolver(helioFrameId, t3) : SimVec3.Zero;
+            SimVec3 hAtT2 = positionResolver != null && helioFrameId.IsValid ? positionResolver(helioFrameId, t2) : SimVec3.Zero;
+            SimVec3 hAtT3 = positionResolver != null && helioFrameId.IsValid ? positionResolver(helioFrameId, t3) : SimVec3.Zero;
 
             route.Segments.Add(new RouteSegment
             {
                 Type = SegmentType.HeliocentricTransfer,
                 ReferenceBodyId = helioFrameId,
-                StartTime = t2,
-                Duration = cruiseDuration,
-                StartLocalPosition = wp2 - helioAtT2,
-                EndLocalPosition = wp3 - helioAtT3,
-                CachedWorldStart = wp2,
-                CachedWorldEnd = wp3
+                StartTime = t2, Duration = cruiseDuration,
+                StartLocalPosition = wp2 - hAtT2,
+                EndLocalPosition = wp3 - hAtT3,
+                CachedWorldStart = wp2, CachedWorldEnd = wp3
             });
 
-            // 4. SOI Entry — transition into destination SOI.
-            SimVec3 destAtT3 = positionResolver != null ? positionResolver(arrivalParent.Id, t3) : SimVec3.Zero;
-            SimVec3 destAtT4 = positionResolver != null ? positionResolver(arrivalParent.Id, t4) : SimVec3.Zero;
+            SimVec3 dAtT3 = positionResolver != null ? positionResolver(arrivalParent.Id, t3) : SimVec3.Zero;
+            SimVec3 dAtT4 = positionResolver != null ? positionResolver(arrivalParent.Id, t4) : SimVec3.Zero;
 
             route.Segments.Add(new RouteSegment
             {
                 Type = SegmentType.SOIEntry,
                 ReferenceBodyId = arrivalParent.Id,
-                StartTime = t3,
-                Duration = entryDuration,
-                StartLocalPosition = wp3 - destAtT3,
-                EndLocalPosition = wp4 - destAtT4,
-                CachedWorldStart = wp3,
-                CachedWorldEnd = wp4
+                StartTime = t3, Duration = entryDuration,
+                StartLocalPosition = wp3 - dAtT3,
+                EndLocalPosition = wp4 - dAtT4,
+                CachedWorldStart = wp3, CachedWorldEnd = wp4
             });
 
-            // 5. Orbit insertion.
-            SimVec3 destAtT4b = positionResolver != null ? positionResolver(arrivalParent.Id, t4) : SimVec3.Zero;
+            SimVec3 dAtT4b = positionResolver != null ? positionResolver(arrivalParent.Id, t4) : SimVec3.Zero;
+            SimVec3 insertionStart = wp4 - dAtT4b;
 
             route.Segments.Add(new RouteSegment
             {
                 Type = SegmentType.OrbitInsertion,
                 ReferenceBodyId = arrivalParent.Id,
-                StartTime = t4,
-                Duration = insDuration,
-                StartLocalPosition = wp4 - destAtT4b,
-                EndLocalPosition = ComputeInsertionTarget(route, approachWorldPos, arrivalParent, positionResolver, t4),
+                StartTime = t4, Duration = insDuration,
+                StartLocalPosition = insertionStart,
+                EndLocalPosition = SimVec3.Zero, // Overwritten by ConfigureInsertionCurve.
                 CachedWorldStart = wp4,
                 DestinationOrbitRadius = route.DestinationOrbitRadius,
                 DestinationOrbitPeriod = route.DestinationOrbitPeriod,
@@ -337,22 +260,131 @@ namespace SpaceSim.Simulation.Ships
         }
 
         // ---------------------------------------------------------------
-        // Hierarchy analysis helpers
+        // Phase 26d fix: Tangent-aligned insertion point + Bezier curve
         // ---------------------------------------------------------------
 
         /// <summary>
-        /// Find the common parent body of two bodies by walking up both parent chains.
-        /// Returns EntityId.None if no common parent is found (shouldn't happen in a
-        /// single star system).
+        /// Compute the orbit entry point and Bezier control point for smooth insertion.
+        ///
+        /// Key insight: the entry point on the orbit should be where the orbit's tangent
+        /// is parallel to the approach direction — NOT the closest radial point.
+        ///
+        /// Algorithm:
+        ///   1. Compute approach direction in local coords (from P0 toward body center)
+        ///   2. Find the point on the orbit circle where the tangent matches approach dir.
+        ///      For a circular orbit in XZ: if approach dir is (dx, 0, dz), the tangent
+        ///      at angle θ is (-sin θ, 0, cos θ). We want tangent ∥ approach dir.
+        ///      → θ = atan2(-dx, dz) (prograde) or θ + π (retrograde)
+        ///   3. Pick the θ that is on the "correct side" (ship doesn't cross through body)
+        ///   4. P1 = R * (cos θ, 0, sin θ)
+        ///   5. Control point C placed so curve starts along approach and ends at P1 tangentially
         /// </summary>
+        private static void ConfigureInsertionCurve(ShipRoute route)
+        {
+            if (route.Segments == null || route.Segments.Count == 0)
+                return;
+
+            RouteSegment insertion = null;
+            for (int i = route.Segments.Count - 1; i >= 0; i--)
+            {
+                if (route.Segments[i].Type == SegmentType.OrbitInsertion)
+                {
+                    insertion = route.Segments[i];
+                    break;
+                }
+            }
+
+            if (insertion == null)
+                return;
+
+            SimVec3 p0 = insertion.StartLocalPosition;
+            double orbitR = insertion.DestinationOrbitRadius;
+            if (orbitR < 1e-10)
+            {
+                insertion.UseCurvedInsertion = false;
+                return;
+            }
+
+            // Approach direction: from P0 toward the body center (origin in local coords).
+            // Normalized in XZ plane (Y ignored for 2D orbit geometry).
+            SimVec3 toCenter = new SimVec3(-p0.X, 0.0, -p0.Z);
+            double toCenterMag = Math.Sqrt(toCenter.X * toCenter.X + toCenter.Z * toCenter.Z);
+            if (toCenterMag < 1e-10)
+            {
+                insertion.UseCurvedInsertion = false;
+                return;
+            }
+
+            double dx = toCenter.X / toCenterMag;
+            double dz = toCenter.Z / toCenterMag;
+
+            // Find orbit angle θ where tangent(-sin θ, 0, cos θ) is parallel to approach.
+            // tangent ∥ (dx, dz) means: -sin θ / dx = cos θ / dz
+            // → θ = atan2(-dx, dz)
+            double thetaA = Math.Atan2(-dx, dz);
+            double thetaB = thetaA + Math.PI;
+
+            // Two candidate points on the orbit.
+            SimVec3 candA = new SimVec3(orbitR * Math.Cos(thetaA), 0.0, orbitR * Math.Sin(thetaA));
+            SimVec3 candB = new SimVec3(orbitR * Math.Cos(thetaB), 0.0, orbitR * Math.Sin(thetaB));
+
+            // Pick the candidate that is closer to P0 (less travel distance).
+            double distA = (candA - p0).SqrMagnitude;
+            double distB = (candB - p0).SqrMagnitude;
+
+            SimVec3 p1;
+            SimVec3 orbitTangent;
+
+            if (distA <= distB)
+            {
+                p1 = candA;
+                orbitTangent = new SimVec3(-Math.Sin(thetaA), 0.0, Math.Cos(thetaA));
+            }
+            else
+            {
+                p1 = candB;
+                orbitTangent = new SimVec3(-Math.Sin(thetaB), 0.0, Math.Cos(thetaB));
+            }
+
+            // Ensure tangent points in the same general direction as approach
+            // (not backwards). If dot < 0, flip tangent (retrograde insertion).
+            SimVec3 approachDir = new SimVec3(dx, 0.0, dz);
+            if (SimVec3.Dot(orbitTangent, approachDir) < 0.0)
+            {
+                orbitTangent = new SimVec3(-orbitTangent.X, -orbitTangent.Y, -orbitTangent.Z);
+            }
+
+            // Update the insertion endpoint.
+            insertion.EndLocalPosition = p1;
+            insertion.OrbitTangentAtEnd = orbitTangent;
+
+            // Update ArrivalAngleDeg to match the new P1 position.
+            double arrAngleRad = Math.Atan2(p1.Z, p1.X);
+            insertion.ArrivalAngleDeg = NormalizeDeg(arrAngleRad * 180.0 / Math.PI);
+
+            // Bezier control point: C = P1 - k * orbitTangent
+            // k = distance(P0, P1) * 0.5 gives a gentle curve proportional to approach distance.
+            double approachDist = (p1 - p0).Magnitude;
+            double k = approachDist * 0.5;
+            if (k < orbitR * 0.3) k = orbitR * 0.3; // Minimum curve size.
+
+            SimVec3 controlPoint = new SimVec3(
+                p1.X - k * orbitTangent.X,
+                p1.Y - k * orbitTangent.Y,
+                p1.Z - k * orbitTangent.Z);
+
+            insertion.InsertionControlPoint = controlPoint;
+            insertion.UseCurvedInsertion = true;
+        }
+
+        // ---------------------------------------------------------------
+        // Hierarchy helpers
+        // ---------------------------------------------------------------
+
         public static EntityId FindCommonParent(
-            CelestialBody bodyA,
-            CelestialBody bodyB,
-            WorldRegistry registry)
+            CelestialBody bodyA, CelestialBody bodyB, WorldRegistry registry)
         {
             if (bodyA == null || bodyB == null) return EntityId.None;
-
-            // Collect ancestors of A.
             var ancestorsA = new HashSet<EntityId>();
             var current = bodyA;
             int depth = 0;
@@ -363,45 +395,29 @@ namespace SpaceSim.Simulation.Ships
                 current = registry.GetCelestialBody(current.ParentId);
                 depth++;
             }
-
-            // Walk up B's chain until we find a common ancestor.
             current = bodyB;
             depth = 0;
             while (current != null && depth < 20)
             {
-                if (ancestorsA.Contains(current.Id))
-                    return current.Id;
+                if (ancestorsA.Contains(current.Id)) return current.Id;
                 if (!current.ParentId.IsValid) break;
                 current = registry.GetCelestialBody(current.ParentId);
                 depth++;
             }
-
             return EntityId.None;
         }
 
-        /// <summary>
-        /// Determine if this is a local transfer (within the same non-star parent's SOI)
-        /// or an interplanetary transfer (requires going through the star frame).
-        /// </summary>
         private static bool IsLocalTransfer(
-            CelestialBody originBody,
-            CelestialBody arrivalParent,
-            EntityId commonParentId,
-            WorldRegistry registry)
+            CelestialBody originBody, CelestialBody arrivalParent,
+            EntityId commonParentId, WorldRegistry registry)
         {
-            // Direct parent/child relationship.
             if (originBody.ParentId == arrivalParent.Id) return true;
             if (arrivalParent.ParentId == originBody.Id) return true;
-
-            // Same parent, and parent is not a star.
             if (originBody.ParentId.IsValid && originBody.ParentId == arrivalParent.ParentId)
             {
                 var parent = registry.GetCelestialBody(originBody.ParentId);
-                if (parent != null && parent.BodyType != CelestialBodyType.Star)
-                    return true;
+                if (parent != null && parent.BodyType != CelestialBodyType.Star) return true;
             }
-
-            // Common parent is not a star (e.g. both are moons of the same planet).
             if (commonParentId.IsValid)
             {
                 var common = registry.GetCelestialBody(commonParentId);
@@ -409,56 +425,17 @@ namespace SpaceSim.Simulation.Ships
                     && common.Id != originBody.Id && common.Id != arrivalParent.Id)
                     return true;
             }
-
             return false;
         }
 
-        /// <summary>
-        /// Find the best local frame body for a local transfer.
-        /// </summary>
         private static EntityId FindBestLocalFrame(
-            CelestialBody originBody,
-            CelestialBody arrivalParent,
-            WorldRegistry registry)
+            CelestialBody originBody, CelestialBody arrivalParent, WorldRegistry registry)
         {
-            // Parent/child: use the parent.
             if (originBody.ParentId == arrivalParent.Id) return arrivalParent.Id;
             if (arrivalParent.ParentId == originBody.Id) return originBody.Id;
-
-            // Same parent.
             if (originBody.ParentId.IsValid && originBody.ParentId == arrivalParent.ParentId)
                 return originBody.ParentId;
-
             return EntityId.None;
-        }
-
-        /// <summary>
-        /// Compute the orbit insertion target position in local coords relative to arrivalParent.
-        /// </summary>
-        private static SimVec3 ComputeInsertionTarget(
-            ShipRoute route,
-            SimVec3 approachWorldPos,
-            CelestialBody arrivalParent,
-            Func<EntityId, double, SimVec3> positionResolver,
-            double time)
-        {
-            if (positionResolver == null || arrivalParent == null)
-                return SimVec3.Zero;
-
-            SimVec3 parentPos = positionResolver(arrivalParent.Id, time);
-            SimVec3 localApproach = approachWorldPos - parentPos;
-
-            // Compute direction from parent to approach point.
-            double mag = localApproach.Magnitude;
-            if (mag < 1e-10)
-                return new SimVec3(route.DestinationOrbitRadius, 0.0, 0.0);
-
-            // Scale to orbit radius.
-            double scale = route.DestinationOrbitRadius / mag;
-            return new SimVec3(
-                localApproach.X * scale,
-                localApproach.Y * scale,
-                localApproach.Z * scale);
         }
 
         private static SimVec3 Lerp(SimVec3 a, SimVec3 b, double t)
@@ -467,6 +444,12 @@ namespace SpaceSim.Simulation.Ships
                 a.X + (b.X - a.X) * t,
                 a.Y + (b.Y - a.Y) * t,
                 a.Z + (b.Z - a.Z) * t);
+        }
+
+        private static double NormalizeDeg(double deg)
+        {
+            deg %= 360.0;
+            return deg < 0 ? deg + 360.0 : deg;
         }
     }
 }
