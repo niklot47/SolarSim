@@ -153,17 +153,17 @@ MonoBehaviour:
   uiDocument: {fileID: 1837812490}
   starSystemDefinition: {fileID: 11400000, guid: 152fe9861eff72f429025f0ad47ecf5b, type: 2}
   externalSystemFile: {fileID: 4900000, guid: 8fcb73da271c2d74b8aafdfe32ec48a0, type: 3}
-  npcTravelSpeed: 10
-  npcMinTravelDuration: 3
-  npcIdleDelay: 3
-  npcDockingWaitTime: 5
-  dockingApproachDuration: 2
-  orbitInsertionDuration: 1.5
+  npcTravelSpeed: 0.1
+  npcMinTravelDuration: 3600
+  npcIdleDelay: 86400
+  npcDockingWaitTime: 259200
+  dockingApproachDuration: 7200
+  orbitInsertionDuration: 21600
   orbitApproachMultiplier: 2.5
   routeSafetyEnabled: 1
-  routeSafetyMargin: 0.1
+  routeSafetyMargin: 50
   routeSafetyCheckSamples: 20
-  demandEvalInterval: 5
+  demandEvalInterval: 86400
 --- !u!4 &81263134
 Transform:
   m_ObjectHideFlags: 0
@@ -285,10 +285,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 70dbde4a2449a3c41a30fb9fcb1cf8f2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Cameras.OrbitalCameraController
-  zoomSpeed: 50
+  zoomSpeed: 100
   minDistance: 5
-  maxDistance: 2000
-  panSpeed: 0.5
+  maxDistance: 8000
+  panSpeed: 4
   rotateSpeed: 2
   focusLerpSpeed: 20
   currentDistance: 80
@@ -369,6 +369,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: SpaceSim.Rendering::SpaceSim.Rendering.Bootstrap.GameBootstrap
   enableDebugSystem: 1
   debugFilterProfile: {fileID: 11400000, guid: 24c6aaecd6189e34aa9257814eaf8d33, type: 2}
+  initialTimeScale: 86400
   sandboxCoordinator: {fileID: 81263133}
 --- !u!4 &284047943
 Transform:
@@ -464,8 +465,8 @@ MonoBehaviour:
   defaultBodyMaterial: {fileID: 2100000, guid: a8679835d429842428722c8c6b747521, type: 2}
   scaleConfig: {fileID: 11400000, guid: 6d4c6e166aa99794c9918fbfa574d086, type: 2}
   orbitLineMaterial: {fileID: 2100000, guid: a8679835d429842428722c8c6b747521, type: 2}
-  orbitLineBaseWidth: 0.01
-  orbitLineMaxMultiplier: 350
+  orbitLineBaseWidth: 0.02
+  orbitLineMaxMultiplier: 500
   orbitLineCurveSigma: 1.57
   adaptiveOrbitLines: 1
   orbitLineTolerance: 0.05

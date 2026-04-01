@@ -6,18 +6,17 @@ namespace SpaceSim.Rendering.Cameras
     /// <summary>
     /// Minimal orbital camera controller for the sandbox view.
     /// Supports pan, zoom, focus on target, and smooth focus transitions.
-    /// Uses the new Input System package.
     ///
-    /// BlockInput property allows UI controllers to suppress camera input
-    /// when the mouse is over UI panels or a modal is open.
+    /// maxDistance increased to 8000 to accommodate real-scale solar system
+    /// with DistanceScale=0.0002 (Pluto ~1181 scene units from Sol).
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class OrbitalCameraController : MonoBehaviour
     {
         [Header("Zoom")]
-        [SerializeField] private float zoomSpeed = 10f;
-        [SerializeField] private float minDistance = 5f;
-        [SerializeField] private float maxDistance = 200f;
+        [SerializeField] private float zoomSpeed = 50f;
+        [SerializeField] private float minDistance = 0.1f;
+        [SerializeField] private float maxDistance = 8000f;
 
         [Header("Pan")]
         [SerializeField] private float panSpeed = 0.5f;
@@ -26,7 +25,7 @@ namespace SpaceSim.Rendering.Cameras
         [SerializeField] private float rotateSpeed = 2f;
 
         [Header("Smooth Focus")]
-        [SerializeField] private float focusLerpSpeed = 5f;
+        [SerializeField] private float focusLerpSpeed = 20f;
 
         [Header("State")]
         [SerializeField] private float currentDistance = 80f;
@@ -40,26 +39,16 @@ namespace SpaceSim.Rendering.Cameras
         private bool _isSmoothFocusing;
         private Vector3 _smoothTargetPoint;
 
-        /// <summary>Current camera distance from focus point.</summary>
         public float CurrentDistance => currentDistance;
-
-        /// <summary>Minimum allowed zoom distance (from Inspector).</summary>
         public float MinDistance => minDistance;
-
-        /// <summary>Maximum allowed zoom distance (from Inspector).</summary>
         public float MaxDistance => maxDistance;
 
-        /// <summary>
-        /// When true, all camera input (zoom, pan, rotate) is suppressed.
-        /// Set by UIInputBlocker when mouse is over panels or modal is open.
-        /// </summary>
         public bool BlockInput { get; set; }
 
         public void SetFocusTarget(Transform target)
         {
             _focusTarget = target;
-            if (target != null)
-                _focusPoint = target.position;
+            if (target != null) _focusPoint = target.position;
             _isSmoothFocusing = false;
         }
 
@@ -80,23 +69,19 @@ namespace SpaceSim.Rendering.Cameras
             _isSmoothFocusing = false;
         }
 
-        private void OnEnable()
-        {
-            _mouse = Mouse.current;
-        }
+        private void OnEnable() { _mouse = Mouse.current; }
 
         private void LateUpdate()
         {
             _mouse = Mouse.current;
             if (_mouse == null) return;
 
-            if (_focusTarget != null)
-                _smoothTargetPoint = _focusTarget.position;
+            if (_focusTarget != null) _smoothTargetPoint = _focusTarget.position;
 
             if (_isSmoothFocusing)
             {
                 _focusPoint = Vector3.Lerp(_focusPoint, _smoothTargetPoint, focusLerpSpeed * Time.deltaTime);
-                if (Vector3.Distance(_focusPoint, _smoothTargetPoint) < 0.01f)
+                if (Vector3.Distance(_focusPoint, _smoothTargetPoint) < 0.001f)
                 {
                     _focusPoint = _smoothTargetPoint;
                     _isSmoothFocusing = false;
@@ -135,11 +120,7 @@ namespace SpaceSim.Rendering.Cameras
                 Vector2 delta = _mouse.delta.ReadValue();
                 float dx = -delta.x * panSpeed * (currentDistance * 0.001f);
                 float dy = -delta.y * panSpeed * (currentDistance * 0.001f);
-
-                Vector3 right = transform.right;
-                Vector3 up = transform.up;
-
-                _focusPoint += right * dx + up * dy;
+                _focusPoint += transform.right * dx + transform.up * dy;
                 _focusTarget = null;
                 _isSmoothFocusing = false;
             }

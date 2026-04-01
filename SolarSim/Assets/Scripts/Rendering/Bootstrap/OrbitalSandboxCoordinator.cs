@@ -61,7 +61,7 @@ namespace SpaceSim.Rendering.Bootstrap
         [Min(1.0f)]
         [SerializeField] private float orbitApproachMultiplier = 2.5f;
 
-        [Header("Route Safety (Phase 21)")]
+        [Header("Route Safety")]
         [Tooltip("When enabled, routes that intersect stars/planets/moons are rejected before launch.")]
         [SerializeField] private bool routeSafetyEnabled = true;
 

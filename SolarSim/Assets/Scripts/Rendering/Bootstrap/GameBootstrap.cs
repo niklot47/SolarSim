@@ -6,68 +6,56 @@ namespace SpaceSim.Rendering.Bootstrap
 {
     /// <summary>
     /// Main entry point MonoBehaviour. Initializes core systems.
-    /// Attach to a GameObject in the Bootstrap scene.
+    ///
+    /// Time scale presets (sim-s = real seconds, distances compressed):
+    ///   x1       — real time (docking, combat)
+    ///   x86400   — 1 real second = 1 game day  (default, strategic)
+    ///   x864000  — 1 real second = 10 game days (fast-forward)
     /// </summary>
     public class GameBootstrap : MonoBehaviour
     {
-        /// <summary>
-        /// The simulation clock instance, accessible to other systems.
-        /// </summary>
-        public static SimulationClock Clock { get; private set; }
-
-        /// <summary>
-        /// Whether core systems have been initialized.
-        /// </summary>
-        public static bool IsInitialized { get; private set; }
+        public static SimulationClock Clock       { get; private set; }
+        public static bool            IsInitialized { get; private set; }
 
         [Header("Debug")]
-        [SerializeField] private bool enableDebugSystem = true;
-
-        [Tooltip("Assign a DebugFilterProfile asset to control which log categories/tags are active. " +
-                 "Create via: SpaceSim -> Create Debug Filter Profile.")]
+        [SerializeField] private bool               enableDebugSystem  = true;
         [SerializeField] private DebugFilterProfile debugFilterProfile;
+
+        [Header("Simulation")]
+        [Tooltip("Initial time scale.\n" +
+                 "1 = real time (docking/combat)\n" +
+                 "86400 = 1 sec = 1 day (strategic, default)\n" +
+                 "864000 = 1 sec = 10 days (fast-forward)")]
+        [SerializeField] private double initialTimeScale = 86400.0;
 
         [Header("Sandbox")]
         [SerializeField] private OrbitalSandboxCoordinator sandboxCoordinator;
 
         private void Awake()
         {
-            if (IsInitialized)
-            {
-                // Prevent duplicate bootstrap.
-                Destroy(gameObject);
-                return;
-            }
-
+            if (IsInitialized) { Destroy(gameObject); return; }
             DontDestroyOnLoad(gameObject);
             Initialize();
         }
 
         private void Initialize()
         {
-            // 1. Simulation clock.
-            Clock = new SimulationClock();
+            Clock           = new SimulationClock();
+            Clock.TimeScale = initialTimeScale;
 
-            // 2. Debug system.
-            GameDebug.Enabled = enableDebugSystem;
+            GameDebug.Enabled       = enableDebugSystem;
             GameDebug.OnEventLogged = ForwardToUnityLog;
 
-            // 3. Apply debug filter profile.
             if (debugFilterProfile != null)
-            {
                 debugFilterProfile.ApplyTo(GameDebug.ActiveFilter);
-            }
 
-            // Set export directory to persistentDataPath/debug_bundles.
             string exportDir = System.IO.Path.Combine(
                 Application.persistentDataPath, "debug_bundles");
             GameDebug.SetExportDirectory(exportDir);
 
             GameDebug.Log(DebugCategory.DEBUG, "GameBootstrap initialized",
-                source: nameof(GameBootstrap),
-                sceneName: gameObject.scene.name);
+                source: nameof(GameBootstrap), sceneName: gameObject.scene.name);
 
-            // 4. Orbital sandbox (if coordinator is assigned).
             if (sandboxCoordinator != null)
             {
                 sandboxCoordinator.Setup(Clock);
@@ -77,85 +65,61 @@ namespace SpaceSim.Rendering.Bootstrap
 
             IsInitialized = true;
 
-            UnityEngine.Debug.Log($"[GameBootstrap] Initialized. {GameDebug.GetStatus()}");
-            UnityEngine.Debug.Log($"[GameBootstrap] Debug export dir: {exportDir}");
+            UnityEngine.Debug.Log(
+                $"[GameBootstrap] Initialized. TimeScale={Clock.TimeScale}. {GameDebug.GetStatus()}");
         }
 
         private void Update()
         {
-            // Tick the simulation clock with Unity delta time.
             Clock?.Tick(UnityEngine.Time.deltaTime);
 
-            // Update debug context each frame so snapshots have fresh data.
             if (GameDebug.Enabled && Clock != null)
             {
                 GameDebug.SetContext(
-                    sceneName: gameObject.scene.name,
-                    frame: UnityEngine.Time.frameCount,
-                    simTime: Clock.CurrentTime,
-                    timeScale: Clock.TimeScale,
-                    isPaused: Clock.IsPaused);
+                    sceneName:  gameObject.scene.name,
+                    frame:      UnityEngine.Time.frameCount,
+                    simTime:    Clock.CurrentTime,
+                    timeScale:  Clock.TimeScale,
+                    isPaused:   Clock.IsPaused);
             }
         }
 
         private void OnDestroy()
         {
             if (Clock != null)
-            {
                 GameDebug.Log(DebugCategory.DEBUG, "GameBootstrap destroyed",
                     source: nameof(GameBootstrap));
-            }
         }
 
-        /// <summary>
-        /// Bridge: forwards debug events to Unity console.
-        /// Only called for events that passed the filter.
-        /// </summary>
         private static void ForwardToUnityLog(DebugEvent evt)
         {
             string msg = $"[{evt.Category}] {evt.Message}";
             switch (evt.Severity)
             {
-                case "Error":
-                    UnityEngine.Debug.LogError(msg);
-                    break;
-                case "Warning":
-                    UnityEngine.Debug.LogWarning(msg);
-                    break;
-                default:
-                    UnityEngine.Debug.Log(msg);
-                    break;
+                case "Error":   UnityEngine.Debug.LogError(msg);   break;
+                case "Warning": UnityEngine.Debug.LogWarning(msg); break;
+                default:        UnityEngine.Debug.Log(msg);        break;
             }
         }
 
-        // --- Editor convenience ---
 #if UNITY_EDITOR
-        /// <summary>
-        /// Re-apply filter profile when Inspector values change during Play mode.
-        /// This enables live-tweaking of filter settings without restarting.
-        /// </summary>
         private void OnValidate()
         {
             if (Application.isPlaying && debugFilterProfile != null)
-            {
                 debugFilterProfile.ApplyTo(GameDebug.ActiveFilter);
-            }
         }
 
         [ContextMenu("Debug/Печать статуса")]
-        private void PrintStatus()
-        {
+        private void PrintStatus() =>
             UnityEngine.Debug.Log(GameDebug.GetStatus());
-        }
 
         [ContextMenu("Debug/Экспорт бандла")]
         private void EditorExportBundle()
         {
             string path = GameDebug.ExportBundle();
-            if (!string.IsNullOrEmpty(path))
-                UnityEngine.Debug.Log($"[GameDebug] Bundle exported: {path}");
-            else
-                UnityEngine.Debug.LogWarning("[GameDebug] Bundle export returned no path");
+            UnityEngine.Debug.Log(string.IsNullOrEmpty(path)
+                ? "[GameDebug] Bundle export failed"
+                : $"[GameDebug] Bundle exported: {path}");
         }
 
         [ContextMenu("Debug/Снимок состояния")]
@@ -164,17 +128,16 @@ namespace SpaceSim.Rendering.Bootstrap
             var snap = GameDebug.CaptureSnapshot("editor_manual");
             UnityEngine.Debug.Log(
                 $"[GameDebug] Snapshot: {snap.Subsystems.Count} subsystems, " +
-                $"simTime={snap.SimulationTime:F2}, errors={snap.RecentErrors.Count}");
+                $"simTime={snap.SimulationTime:F0}s, errors={snap.RecentErrors.Count}");
         }
 
         [ContextMenu("Debug/Проверка инвариантов")]
         private void EditorRunInvariants()
         {
-            var violations = GameDebug.RunInvariantChecks();
-            if (violations.Count == 0)
-                UnityEngine.Debug.Log("[GameDebug] Invariant check: OK (0 violations)");
-            else
-                UnityEngine.Debug.LogWarning($"[GameDebug] Invariant check: {violations.Count} violation(s)!");
+            var v = GameDebug.RunInvariantChecks();
+            UnityEngine.Debug.Log(v.Count == 0
+                ? "[GameDebug] Invariant check: OK"
+                : $"[GameDebug] {v.Count} violation(s)!");
         }
 
         [ContextMenu("Debug/Очистить")]
@@ -184,19 +147,9 @@ namespace SpaceSim.Rendering.Bootstrap
             UnityEngine.Debug.Log("[GameDebug] Cleared");
         }
 
-        [ContextMenu("Debug/Экспорт + Инварианты")]
-        private void EditorFullDebugDump()
-        {
-            GameDebug.RunInvariantChecks();
-            string path = GameDebug.ExportBundle();
-            UnityEngine.Debug.Log($"[GameDebug] Full dump: {path}");
-        }
-
         [ContextMenu("Debug/Показать фильтр")]
-        private void EditorShowFilter()
-        {
+        private void EditorShowFilter() =>
             UnityEngine.Debug.Log($"[GameDebug] {GameDebug.ActiveFilter.GetFilterSummary()}");
-        }
 #endif
     }
 }

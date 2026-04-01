@@ -11,9 +11,9 @@
       "radius": 1.0,
       "isSelectable": true,
       "hasSurface": false,
-      "soi": 1000.0,
+      "soi": 1000000.0,
       "spin": {
-        "rotationPeriod": 600.0
+        "rotationPeriod": 2160000.0
       }
     },
     {
@@ -25,18 +25,18 @@
       "radius": 0.3,
       "isSelectable": true,
       "hasSurface": true,
-      "soi": 60.0,
+      "soi": 60000.0,
       "orbit": {
         "semiMajorAxis": 150.0,
-        "period": 120.0,
+        "period": 31557600,
         "eccentricity": 0.01671123,
         "meanAnomalyAtEpochDeg": 357.52688973,
-        "inclinationDeg": -1.531e-05,
+        "inclinationDeg": 0.0,
         "longitudeOfAscendingNodeDeg": 0.0,
         "argumentOfPeriapsisDeg": 102.93768193
       },
       "spin": {
-        "rotationPeriod": 30.0
+        "rotationPeriod": 86400.0
       }
     },
     {
@@ -48,18 +48,18 @@
       "radius": 0.2,
       "isSelectable": true,
       "hasSurface": true,
-      "soi": 40.0,
+      "soi": 40000.0,
       "orbit": {
         "semiMajorAxis": 275.0,
-        "period": 240.0,
-        "meanAnomalyAtEpochDeg": 19.39019754,
+        "period": 78336853,
         "eccentricity": 0.0933941,
+        "meanAnomalyAtEpochDeg": 19.39019754,
         "inclinationDeg": 1.84969142,
         "longitudeOfAscendingNodeDeg": 49.55953891,
         "argumentOfPeriapsisDeg": 286.4968315
       },
       "spin": {
-        "rotationPeriod": 25.0
+        "rotationPeriod": 88643.0
       }
     },
     {
@@ -71,18 +71,18 @@
       "radius": 0.16,
       "isSelectable": true,
       "hasSurface": false,
-      "soi": 30.0,
+      "soi": 30000.0,
       "orbit": {
         "semiMajorAxis": 75.0,
-        "period": 80.0,
-        "meanAnomalyAtEpochDeg": 50.37663232,
+        "period": 11157296,
         "eccentricity": 0.00677672,
+        "meanAnomalyAtEpochDeg": 50.37663232,
         "inclinationDeg": 3.39467605,
         "longitudeOfAscendingNodeDeg": 76.67984255,
         "argumentOfPeriapsisDeg": 54.92262463
       },
       "spin": {
-        "rotationPeriod": 20.0
+        "rotationPeriod": 20996760.0
       }
     },
     {
@@ -94,18 +94,18 @@
       "radius": 0.08,
       "isSelectable": true,
       "hasSurface": true,
-      "soi": 8.0,
+      "soi": 8000.0,
       "orbit": {
         "semiMajorAxis": 25.0,
-        "period": 20.0,
-        "meanAnomalyAtEpochDeg": 135.27,
+        "period": 2360621,
         "eccentricity": 0.0554,
+        "meanAnomalyAtEpochDeg": 135.27,
         "inclinationDeg": 5.16,
         "longitudeOfAscendingNodeDeg": 125.08,
         "argumentOfPeriapsisDeg": 318.15
       },
       "spin": {
-        "rotationPeriod": 20.0
+        "rotationPeriod": 2360621.0
       }
     },
     {
@@ -117,10 +117,10 @@
       "radius": 0.5,
       "isSelectable": true,
       "hasSurface": false,
-      "soi": 120.0,
+      "soi": 120000.0,
       "orbit": {
         "semiMajorAxis": 600.0,
-        "period": 800.0,
+        "period": 252460800,
         "eccentricity": 0.05386179,
         "meanAnomalyAtEpochDeg": 317.35536592,
         "inclinationDeg": 2.48599187,
@@ -128,7 +128,7 @@
         "argumentOfPeriapsisDeg": 338.93645383
       },
       "spin": {
-        "rotationPeriod": 40.0
+        "rotationPeriod": 38362.0
       }
     },
     {
@@ -140,10 +140,10 @@
       "radius": 0.42,
       "isSelectable": true,
       "hasSurface": false,
-      "soi": 150.0,
+      "soi": 150000.0,
       "orbit": {
         "semiMajorAxis": 900.0,
-        "period": 1400.0,
+        "period": 463800105,
         "eccentricity": 0.04725744,
         "meanAnomalyAtEpochDeg": 142.28382821,
         "inclinationDeg": 0.77263783,
@@ -151,7 +151,7 @@
         "argumentOfPeriapsisDeg": 96.93735127
       },
       "spin": {
-        "rotationPeriod": 38.0
+        "rotationPeriod": 62064.0
       }
     },
     {
@@ -163,10 +163,10 @@
       "radius": 0.41,
       "isSelectable": true,
       "hasSurface": false,
-      "soi": 180.0,
+      "soi": 180000.0,
       "orbit": {
         "semiMajorAxis": 1200.0,
-        "period": 2200.0,
+        "period": 714066975,
         "eccentricity": 0.00859048,
         "meanAnomalyAtEpochDeg": 259.91520804,
         "inclinationDeg": 1.77004347,
@@ -174,7 +174,7 @@
         "argumentOfPeriapsisDeg": 273.18053653
       },
       "spin": {
-        "rotationPeriod": 36.0
+        "rotationPeriod": 57996.0
       }
     },
     {
@@ -186,10 +186,10 @@
       "radius": 0.1,
       "isSelectable": true,
       "hasSurface": true,
-      "soi": 60.0,
+      "soi": 60000.0,
       "orbit": {
         "semiMajorAxis": 1600.0,
-        "period": 4000.0,
+        "period": 1099378027,
         "eccentricity": 0.24880766,
         "meanAnomalyAtEpochDeg": 14.86205,
         "inclinationDeg": 17.14175,
@@ -197,7 +197,7 @@
         "argumentOfPeriapsisDeg": 113.76329
       },
       "spin": {
-        "rotationPeriod": 20.0
+        "rotationPeriod": 551854.0
       }
     }
   ],
@@ -210,9 +210,9 @@
       "parentBody": "terra",
       "radius": 0.06,
       "orbitalRadius": 8.0,
-      "orbitalPeriod": 18.0,
+      "orbitalPeriod": 427318,
       "startAngleDeg": 60.0,
-      "rotationPeriod": 40.0,
+      "rotationPeriod": 7200.0,
       "dockingPortCount": 3
     },
     {
@@ -234,9 +234,9 @@
       "parentBody": "ares",
       "radius": 0.05,
       "orbitalRadius": 6.0,
-      "orbitalPeriod": 14.0,
+      "orbitalPeriod": 90789,
       "startAngleDeg": 30.0,
-      "rotationPeriod": 30.0,
+      "rotationPeriod": 86400.0,
       "dockingPortCount": 2
     },
     {
@@ -258,9 +258,9 @@
       "parentBody": "terra",
       "radius": 0.055,
       "orbitalRadius": 11.0,
-      "orbitalPeriod": 24.0,
+      "orbitalPeriod": 688978,
       "startAngleDeg": 180.0,
-      "rotationPeriod": 42.0,
+      "rotationPeriod": 14400.0,
       "dockingPortCount": 4
     },
     {
@@ -271,9 +271,9 @@
       "parentBody": "terra",
       "radius": 0.065,
       "orbitalRadius": 14.0,
-      "orbitalPeriod": 30.0,
+      "orbitalPeriod": 989255,
       "startAngleDeg": 300.0,
-      "rotationPeriod": 48.0,
+      "rotationPeriod": 28800.0,
       "dockingPortCount": 6
     },
     {
@@ -284,9 +284,9 @@
       "parentBody": "terra",
       "radius": 0.058,
       "orbitalRadius": 6.5,
-      "orbitalPeriod": 16.0,
+      "orbitalPeriod": 312958,
       "startAngleDeg": 15.0,
-      "rotationPeriod": 36.0,
+      "rotationPeriod": 7200.0,
       "dockingPortCount": 5
     },
     {
@@ -319,9 +319,9 @@
       "parentBody": "luna",
       "radius": 0.05,
       "orbitalRadius": 3.2,
-      "orbitalPeriod": 7.0,
+      "orbitalPeriod": 11989,
       "startAngleDeg": 20.0,
-      "rotationPeriod": 24.0,
+      "rotationPeriod": 3600.0,
       "dockingPortCount": 4
     },
     {
@@ -332,9 +332,9 @@
       "parentBody": "luna",
       "radius": 0.048,
       "orbitalRadius": 4.4,
-      "orbitalPeriod": 9.0,
+      "orbitalPeriod": 19331,
       "startAngleDeg": 140.0,
-      "rotationPeriod": 28.0,
+      "rotationPeriod": 7200.0,
       "dockingPortCount": 3
     },
     {
@@ -345,9 +345,9 @@
       "parentBody": "luna",
       "radius": 0.045,
       "orbitalRadius": 5.6,
-      "orbitalPeriod": 11.0,
+      "orbitalPeriod": 27756,
       "startAngleDeg": 260.0,
-      "rotationPeriod": 32.0,
+      "rotationPeriod": 10800.0,
       "dockingPortCount": 3
     },
     {
@@ -380,9 +380,9 @@
       "parentBody": "ares",
       "radius": 0.052,
       "orbitalRadius": 8.5,
-      "orbitalPeriod": 19.0,
+      "orbitalPeriod": 153086,
       "startAngleDeg": 210.0,
-      "rotationPeriod": 35.0,
+      "rotationPeriod": 86400.0,
       "dockingPortCount": 4
     },
     {
@@ -393,9 +393,9 @@
       "parentBody": "ares",
       "radius": 0.056,
       "orbitalRadius": 10.0,
-      "orbitalPeriod": 22.0,
+      "orbitalPeriod": 195348,
       "startAngleDeg": 85.0,
-      "rotationPeriod": 38.0,
+      "rotationPeriod": 86400.0,
       "dockingPortCount": 5
     },
     {
@@ -406,9 +406,9 @@
       "parentBody": "ares",
       "radius": 0.042,
       "orbitalRadius": 12.0,
-      "orbitalPeriod": 26.0,
+      "orbitalPeriod": 256791,
       "startAngleDeg": 330.0,
-      "rotationPeriod": 22.0,
+      "rotationPeriod": 86400.0,
       "dockingPortCount": 2
     },
     {
@@ -441,9 +441,9 @@
       "parentBody": "venus",
       "radius": 0.048,
       "orbitalRadius": 4.5,
-      "orbitalPeriod": 10.0,
+      "orbitalPeriod": 162747,
       "startAngleDeg": 50.0,
-      "rotationPeriod": 26.0,
+      "rotationPeriod": 7200.0,
       "dockingPortCount": 3
     },
     {
@@ -454,9 +454,9 @@
       "parentBody": "venus",
       "radius": 0.05,
       "orbitalRadius": 6.2,
-      "orbitalPeriod": 13.0,
+      "orbitalPeriod": 263198,
       "startAngleDeg": 220.0,
-      "rotationPeriod": 30.0,
+      "rotationPeriod": 14400.0,
       "dockingPortCount": 4
     },
     {
@@ -467,9 +467,9 @@
       "parentBody": "sol",
       "radius": 0.07,
       "orbitalRadius": 42.0,
-      "orbitalPeriod": 50.0,
+      "orbitalPeriod": 12802716,
       "startAngleDeg": 10.0,
-      "rotationPeriod": 60.0,
+      "rotationPeriod": 604800.0,
       "dockingPortCount": 4
     },
     {
@@ -480,9 +480,9 @@
       "parentBody": "sol",
       "radius": 0.06,
       "orbitalRadius": 58.0,
-      "orbitalPeriod": 68.0,
+      "orbitalPeriod": 20760595,
       "startAngleDeg": 190.0,
-      "rotationPeriod": 55.0,
+      "rotationPeriod": 604800.0,
       "dockingPortCount": 3
     }
   ],
@@ -495,8 +495,8 @@
       "shipClass": "Corvette",
       "parentBody": "terra",
       "radius": 0.03,
-      "orbitalRadius": 3.0,
-      "orbitalPeriod": 12.0,
+      "orbitalRadius": 8.0,
+      "orbitalPeriod": 427318,
       "startAngleDeg": 0.0
     },
     {
@@ -507,8 +507,8 @@
       "shipClass": "Freighter",
       "parentBody": "terra",
       "radius": 0.024,
-      "orbitalRadius": 4.0,
-      "orbitalPeriod": 15.0,
+      "orbitalRadius": 9.0,
+      "orbitalPeriod": 509894,
       "startAngleDeg": 120.0
     },
     {
@@ -519,8 +519,8 @@
       "shipClass": "Interceptor",
       "parentBody": "ares",
       "radius": 0.024,
-      "orbitalRadius": 3.0,
-      "orbitalPeriod": 10.0,
+      "orbitalRadius": 5.0,
+      "orbitalPeriod": 69066,
       "startAngleDeg": 200.0
     },
     {
@@ -531,8 +531,8 @@
       "shipClass": "Freighter",
       "parentBody": "terra",
       "radius": 0.024,
-      "orbitalRadius": 5.0,
-      "orbitalPeriod": 17.0,
+      "orbitalRadius": 10.0,
+      "orbitalPeriod": 597195,
       "startAngleDeg": 35.0
     },
     {
@@ -543,57 +543,9 @@
       "shipClass": "Freighter",
       "parentBody": "terra",
       "radius": 0.024,
-      "orbitalRadius": 5.8,
-      "orbitalPeriod": 19.0,
+      "orbitalRadius": 11.0,
+      "orbitalPeriod": 688978,
       "startAngleDeg": 90.0
-    },
-    {
-      "key": "ship_delta3",
-      "name": "Контейнеровоз «Дельта-3»",
-      "localizationKey": "ship.delta3",
-      "role": "Trader",
-      "shipClass": "Freighter",
-      "parentBody": "terra",
-      "radius": 0.025,
-      "orbitalRadius": 6.4,
-      "orbitalPeriod": 21.0,
-      "startAngleDeg": 160.0
-    },
-    {
-      "key": "ship_delta8",
-      "name": "Контейнеровоз «Дельта-8»",
-      "localizationKey": "ship.delta8",
-      "role": "Trader",
-      "shipClass": "Freighter",
-      "parentBody": "terra",
-      "radius": 0.025,
-      "orbitalRadius": 7.2,
-      "orbitalPeriod": 24.0,
-      "startAngleDeg": 250.0
-    },
-    {
-      "key": "ship_ruta1",
-      "name": "Курьер «Рута-1»",
-      "localizationKey": "ship.ruta1",
-      "role": "Civilian",
-      "shipClass": "Courier",
-      "parentBody": "terra",
-      "radius": 0.02,
-      "orbitalRadius": 3.8,
-      "orbitalPeriod": 13.0,
-      "startAngleDeg": 300.0
-    },
-    {
-      "key": "ship_ruta2",
-      "name": "Курьер «Рута-2»",
-      "localizationKey": "ship.ruta2",
-      "role": "Civilian",
-      "shipClass": "Courier",
-      "parentBody": "terra",
-      "radius": 0.02,
-      "orbitalRadius": 4.6,
-      "orbitalPeriod": 16.0,
-      "startAngleDeg": 210.0
     },
     {
       "key": "ship_strazh1",
@@ -603,8 +555,8 @@
       "shipClass": "Interceptor",
       "parentBody": "terra",
       "radius": 0.022,
-      "orbitalRadius": 4.2,
-      "orbitalPeriod": 14.0,
+      "orbitalRadius": 7.0,
+      "orbitalPeriod": 349754,
       "startAngleDeg": 45.0
     },
     {
@@ -615,8 +567,8 @@
       "shipClass": "Interceptor",
       "parentBody": "terra",
       "radius": 0.022,
-      "orbitalRadius": 6.0,
-      "orbitalPeriod": 20.0,
+      "orbitalRadius": 8.0,
+      "orbitalPeriod": 427318,
       "startAngleDeg": 135.0
     },
     {
@@ -627,45 +579,9 @@
       "shipClass": "Freighter",
       "parentBody": "luna",
       "radius": 0.023,
-      "orbitalRadius": 2.4,
-      "orbitalPeriod": 6.0,
+      "orbitalRadius": 3.2,
+      "orbitalPeriod": 11989,
       "startAngleDeg": 20.0
-    },
-    {
-      "key": "ship_selena6",
-      "name": "Транспорт «Селена-6»",
-      "localizationKey": "ship.selena6",
-      "role": "Trader",
-      "shipClass": "Freighter",
-      "parentBody": "luna",
-      "radius": 0.023,
-      "orbitalRadius": 2.9,
-      "orbitalPeriod": 7.5,
-      "startAngleDeg": 170.0
-    },
-    {
-      "key": "ship_perelet1",
-      "name": "Шаттл «Перелёт-1»",
-      "localizationKey": "ship.perelet1",
-      "role": "Civilian",
-      "shipClass": "Shuttle",
-      "parentBody": "luna",
-      "radius": 0.019,
-      "orbitalRadius": 2.0,
-      "orbitalPeriod": 5.5,
-      "startAngleDeg": 310.0
-    },
-    {
-      "key": "ship_luch1",
-      "name": "Патруль «Луч-1»",
-      "localizationKey": "ship.luch1",
-      "role": "Patrol",
-      "shipClass": "Interceptor",
-      "parentBody": "luna",
-      "radius": 0.021,
-      "orbitalRadius": 2.6,
-      "orbitalPeriod": 6.8,
-      "startAngleDeg": 95.0
     },
     {
       "key": "ship_cargo12",
@@ -675,45 +591,9 @@
       "shipClass": "Freighter",
       "parentBody": "ares",
       "radius": 0.024,
-      "orbitalRadius": 4.0,
-      "orbitalPeriod": 12.0,
-      "startAngleDeg": 35.0
-    },
-    {
-      "key": "ship_cargo18",
-      "name": "Транспорт «Карго-18»",
-      "localizationKey": "ship.cargo18",
-      "role": "Trader",
-      "shipClass": "Freighter",
-      "parentBody": "ares",
-      "radius": 0.024,
-      "orbitalRadius": 5.0,
-      "orbitalPeriod": 15.0,
-      "startAngleDeg": 120.0
-    },
-    {
-      "key": "ship_krasnyj1",
-      "name": "Контейнеровоз «Красный-1»",
-      "localizationKey": "ship.krasnyj1",
-      "role": "Trader",
-      "shipClass": "Freighter",
-      "parentBody": "ares",
-      "radius": 0.025,
       "orbitalRadius": 6.0,
-      "orbitalPeriod": 18.0,
-      "startAngleDeg": 270.0
-    },
-    {
-      "key": "ship_pyl1",
-      "name": "Шаттл «Пыль-1»",
-      "localizationKey": "ship.pyl1",
-      "role": "Civilian",
-      "shipClass": "Shuttle",
-      "parentBody": "ares",
-      "radius": 0.019,
-      "orbitalRadius": 3.5,
-      "orbitalPeriod": 11.0,
-      "startAngleDeg": 210.0
+      "orbitalPeriod": 90789,
+      "startAngleDeg": 35.0
     },
     {
       "key": "ship_strazh4",
@@ -723,45 +603,9 @@
       "shipClass": "Interceptor",
       "parentBody": "ares",
       "radius": 0.022,
-      "orbitalRadius": 4.8,
-      "orbitalPeriod": 13.0,
+      "orbitalRadius": 4.0,
+      "orbitalPeriod": 49419,
       "startAngleDeg": 330.0
-    },
-    {
-      "key": "ship_venus_trade1",
-      "name": "Транспорт «Заря-1»",
-      "localizationKey": "ship.venus_trade1",
-      "role": "Trader",
-      "shipClass": "Freighter",
-      "parentBody": "venus",
-      "radius": 0.023,
-      "orbitalRadius": 3.2,
-      "orbitalPeriod": 8.5,
-      "startAngleDeg": 60.0
-    },
-    {
-      "key": "ship_venus_trade2",
-      "name": "Транспорт «Заря-2»",
-      "localizationKey": "ship.venus_trade2",
-      "role": "Trader",
-      "shipClass": "Freighter",
-      "parentBody": "venus",
-      "radius": 0.023,
-      "orbitalRadius": 4.1,
-      "orbitalPeriod": 10.0,
-      "startAngleDeg": 220.0
-    },
-    {
-      "key": "ship_venus_civ1",
-      "name": "Курьер «Утро-5»",
-      "localizationKey": "ship.venus_civ1",
-      "role": "Civilian",
-      "shipClass": "Courier",
-      "parentBody": "venus",
-      "radius": 0.019,
-      "orbitalRadius": 2.6,
-      "orbitalPeriod": 7.0,
-      "startAngleDeg": 145.0
     },
     {
       "key": "ship_helios1",
@@ -771,21 +615,9 @@
       "shipClass": "HeavyFreighter",
       "parentBody": "sol",
       "radius": 0.028,
-      "orbitalRadius": 36.0,
-      "orbitalPeriod": 44.0,
+      "orbitalRadius": 42.0,
+      "orbitalPeriod": 12802716,
       "startAngleDeg": 80.0
-    },
-    {
-      "key": "ship_helios2",
-      "name": "Дальний транспорт «Гелиос-2»",
-      "localizationKey": "ship.helios2",
-      "role": "Trader",
-      "shipClass": "HeavyFreighter",
-      "parentBody": "sol",
-      "radius": 0.028,
-      "orbitalRadius": 48.0,
-      "orbitalPeriod": 58.0,
-      "startAngleDeg": 250.0
     },
     {
       "key": "ship_pioneer1",
@@ -795,8 +627,8 @@
       "shipClass": "Explorer",
       "parentBody": "sol",
       "radius": 0.022,
-      "orbitalRadius": 54.0,
-      "orbitalPeriod": 66.0,
+      "orbitalRadius": 58.0,
+      "orbitalPeriod": 20760595,
       "startAngleDeg": 15.0
     }
   ]
